@@ -15,11 +15,590 @@
 
 'use strict';
 
+const SETTINGS_KEY = 'tabOutSettings';
+const SHORTCUTS_KEY = 'searchShortcuts';
+
+const DEFAULT_SETTINGS = {
+  language: 'en',
+  replaceChromeNewTab: false,
+};
+
+const DEFAULT_SHORTCUTS = [
+  { name: 'Gmail', url: 'https://mail.google.com/' },
+  { name: 'GitHub', url: 'https://github.com/' },
+  { name: 'YouTube', url: 'https://www.youtube.com/' },
+  { name: 'X', url: 'https://x.com/home' },
+];
+
+let appSettings = { ...DEFAULT_SETTINGS };
+let draftSettings = { ...DEFAULT_SETTINGS };
+let searchShortcuts = [];
+let activeShortcutDrag = null;
+let suppressShortcutClick = false;
+let headerClockTimer = null;
+
+const I18N = {
+  en: {
+    settings: 'Settings',
+    settingsSubtitle: 'Make Tab Out fit the way you browse.',
+    languageTitle: 'Language',
+    languageDesc: 'Choose a language, then save to apply it.',
+    newTabTitle: 'New Tab',
+    newTabDesc: 'Choose what Chrome opens when you create a new tab.',
+    replaceChromeNewTab: "Replace Chrome's new tab page with Tab Out",
+    replaceChromeNewTabDesc: "When off, Tab Out leaves Chrome's new tab page and other new-tab extensions alone.",
+    shortcutTitle: 'Shortcut',
+    shortcutDesc: 'Use this keyboard shortcut to open Tab Out from anywhere in Chrome.',
+    dupePrefix: 'You have',
+    dupeSuffix: 'Tab Out tabs open. Keep just this one?',
+    closeExtras: 'Close extras',
+    savedForLater: 'Saved for later',
+    nothingSaved: 'Nothing saved. Living in the moment.',
+    archive: 'Archive',
+    searchArchived: 'Search archived tabs...',
+    openTabsStat: 'Open tabs',
+    openTabsTitle: 'Open tabs',
+    refreshTabs: 'Refresh',
+    searchGoogle: 'Search Google',
+    searchBaidu: 'Search Baidu',
+    googleSearchButton: 'Search',
+    baiduSearchButton: 'Search',
+    addShortcut: 'Add',
+    shortcutModalTitle: 'Shortcut',
+    shortcutNameLabel: 'Name',
+    shortcutUrlLabel: 'URL',
+    shortcutNamePlaceholder: 'GitHub',
+    shortcutUrlPlaceholder: 'https://github.com',
+    deleteShortcut: 'Delete',
+    shortcutSaved: 'Shortcut saved',
+    shortcutDeleted: 'Shortcut deleted',
+    shortcutNameUrlRequired: 'Name and URL are required',
+    invalidShortcutUrl: 'Enter a valid URL',
+    homepages: 'Homepages',
+    domains: count => `${count} domain${count !== 1 ? 's' : ''}`,
+    tabsOpen: count => `${count} tab${count !== 1 ? 's' : ''} open`,
+    tabs: count => `${count} tab${count !== 1 ? 's' : ''}`,
+    closeAllTabs: count => `Close all ${count} tab${count !== 1 ? 's' : ''}`,
+    duplicateBadge: count => `${count} duplicate${count !== 1 ? 's' : ''}`,
+    closeDuplicates: count => `Close ${count} duplicate${count !== 1 ? 's' : ''}`,
+    savedItems: count => `${count} item${count !== 1 ? 's' : ''}`,
+    inboxZeroTitle: 'Inbox zero, but for tabs.',
+    inboxZeroSubtitle: "You're free.",
+    noResults: 'No results',
+    goodMorning: 'Good morning',
+    goodAfternoon: 'Good afternoon',
+    goodEvening: 'Good evening',
+    closedExtraTabs: 'Closed extra Tab Out tabs',
+    tabClosed: 'Tab closed',
+    closeThisTab: 'Close this tab',
+    savedForLaterToast: 'Saved for later',
+    failedToSave: 'Failed to save tab',
+    closedFrom: (count, label) => `Closed ${count} tab${count !== 1 ? 's' : ''} from ${label}`,
+    closedDuplicatesToast: 'Closed duplicates, kept one copy each',
+    allTabsClosed: 'All tabs closed. Fresh start.',
+    tabsRefreshed: 'Tabs refreshed',
+    settingsSaved: 'Settings saved',
+    saveSettings: 'Save',
+    cancelSettings: 'Cancel',
+  },
+  zh: {
+    settings: '设置',
+    settingsSubtitle: '让 Tab Out 更符合你的浏览习惯。',
+    languageTitle: '语言',
+    languageDesc: '选择语言后，点击保存即可生效。',
+    newTabTitle: '新标签页',
+    newTabDesc: '选择 Chrome 新建标签页时打开什么。',
+    replaceChromeNewTab: '替换 Chrome 新标签页为 Tab Out',
+    replaceChromeNewTabDesc: '关闭时，Tab Out 不接管 Chrome 新标签页，也不影响其他新标签页扩展。',
+    shortcutTitle: '快捷键',
+    shortcutDesc: '在 Chrome 任意位置使用这个快捷键打开 Tab Out。',
+    dupePrefix: '你打开了',
+    dupeSuffix: '个 Tab Out 页面。只保留当前这个？',
+    closeExtras: '关闭多余页面',
+    savedForLater: '稍后查看',
+    nothingSaved: '还没有保存内容。活在当下。',
+    archive: '归档',
+    searchArchived: '搜索归档标签...',
+    openTabsStat: '打开的标签',
+    openTabsTitle: '打开的标签',
+    refreshTabs: '刷新',
+    searchGoogle: 'Google 搜索',
+    searchBaidu: '百度搜索',
+    googleSearchButton: '搜索',
+    baiduSearchButton: '搜索',
+    addShortcut: '添加',
+    shortcutModalTitle: '快捷方式',
+    shortcutNameLabel: '名称',
+    shortcutUrlLabel: '网址',
+    shortcutNamePlaceholder: 'GitHub',
+    shortcutUrlPlaceholder: 'https://github.com',
+    deleteShortcut: '删除',
+    shortcutSaved: '快捷方式已保存',
+    shortcutDeleted: '快捷方式已删除',
+    shortcutNameUrlRequired: '名称和网址不能为空',
+    invalidShortcutUrl: '请输入有效网址',
+    homepages: '主页',
+    domains: count => `${count} 个域名`,
+    tabsOpen: count => `${count} 个标签打开中`,
+    tabs: count => `${count} 个标签`,
+    closeAllTabs: count => `关闭全部 ${count} 个标签`,
+    duplicateBadge: count => `${count} 个重复`,
+    closeDuplicates: count => `关闭 ${count} 个重复标签`,
+    savedItems: count => `${count} 项`,
+    inboxZeroTitle: '标签页版 Inbox Zero。',
+    inboxZeroSubtitle: '你自由了。',
+    noResults: '没有结果',
+    goodMorning: '早上好',
+    goodAfternoon: '下午好',
+    goodEvening: '晚上好',
+    closedExtraTabs: '已关闭多余的 Tab Out 页面',
+    tabClosed: '标签已关闭',
+    closeThisTab: '关闭这个标签',
+    savedForLaterToast: '已保存到稍后查看',
+    failedToSave: '保存失败',
+    closedFrom: (count, label) => `已从 ${label} 关闭 ${count} 个标签`,
+    closedDuplicatesToast: '已关闭重复标签，并保留一份',
+    allTabsClosed: '所有标签已关闭。重新开始。',
+    tabsRefreshed: '标签页已刷新',
+    settingsSaved: '设置已保存',
+    saveSettings: '保存',
+    cancelSettings: '取消',
+  },
+};
+
+const GREETING_PHRASES = {
+  en: {
+    lateNight: [
+      'Still awake?',
+      'Quiet hours, clear tabs.',
+      'Late night focus mode.',
+    ],
+    dawn: [
+      'Early start.',
+      'Morning light, lighter tabs.',
+      'Fresh day, fresh browser.',
+    ],
+    morning: [
+      'Good morning',
+      'Ready when you are.',
+      'Let’s make the tabs behave.',
+    ],
+    noon: [
+      'Good noon',
+      'Midday reset.',
+      'A small tab tidy would hit nicely.',
+    ],
+    afternoon: [
+      'Good afternoon',
+      'Afternoon focus.',
+      'Your tabs are waiting politely.',
+    ],
+    evening: [
+      'Good evening',
+      'Evening cleanup window.',
+      'Wind down the tab stack.',
+    ],
+    night: [
+      'Good night',
+      'Night mode for your brain.',
+      'Close a few tabs, keep the good ones.',
+    ],
+  },
+  zh: {
+    lateNight: [
+      '还没睡呀',
+      '夜深了，标签也该安静一点。',
+      '深夜专注模式。',
+    ],
+    dawn: [
+      '早起的一天',
+      '新的一天，先把标签理顺。',
+      '清晨好，浏览器也醒了。',
+    ],
+    morning: [
+      '早上好',
+      '今天也从清爽的标签开始。',
+      '早安，先把打开的东西看清楚。',
+    ],
+    noon: [
+      '中午好',
+      '午间重整一下。',
+      '吃饭前后，都适合清一清标签。',
+    ],
+    afternoon: [
+      '下午好',
+      '下午继续专注。',
+      '打开的标签正在排队等你。',
+    ],
+    evening: [
+      '晚上好',
+      '晚间整理时间。',
+      '收一收标签，也收一收脑子。',
+    ],
+    night: [
+      '夜里好',
+      '夜晚适合留下真正重要的标签。',
+      '该轻一点了，标签也是。',
+    ],
+  },
+};
+
+function t(key, ...args) {
+  const lang = I18N[appSettings.language] ? appSettings.language : 'en';
+  const value = I18N[lang][key] ?? I18N.en[key] ?? key;
+  return typeof value === 'function' ? value(...args) : value;
+}
+
+async function loadSettings() {
+  try {
+    const result = await chrome.storage.local.get(SETTINGS_KEY);
+    appSettings = { ...DEFAULT_SETTINGS, ...(result[SETTINGS_KEY] || {}) };
+    draftSettings = { ...appSettings };
+  } catch (err) {
+    console.warn('[tab-out] Failed to load settings:', err);
+    appSettings = { ...DEFAULT_SETTINGS };
+    draftSettings = { ...appSettings };
+  }
+  return appSettings;
+}
+
+async function persistSettings(settings) {
+  try {
+    await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
+  } catch (err) {
+    console.warn('[tab-out] Failed to save settings:', err);
+  }
+}
+
+async function refreshLocalizedUI() {
+  applyLanguage();
+  updateSettingsControls();
+  renderSearchShortcuts();
+  await renderStaticDashboard();
+  applyLanguage();
+  updateSettingsControls();
+  renderSearchShortcuts();
+}
+
+function applyLanguage() {
+  document.documentElement.lang = appSettings.language === 'zh' ? 'zh-CN' : 'en';
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+  });
+}
+
+function updateSettingsControls() {
+  document.querySelectorAll('[data-action="set-language"]').forEach(el => {
+    el.classList.toggle('selected', el.dataset.value === draftSettings.language);
+  });
+
+  document.querySelectorAll('[data-action="toggle-new-tab-override"]').forEach(el => {
+    const selected = !!draftSettings.replaceChromeNewTab;
+    el.classList.toggle('selected', selected);
+    el.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+function openSettingsPanel() {
+  const shell = document.getElementById('appShell');
+  const panel = document.getElementById('settingsPanel');
+  if (!shell || !panel) return;
+  draftSettings = { ...appSettings };
+  updateSettingsControls();
+  shell.classList.add('settings-open');
+  panel.setAttribute('aria-hidden', 'false');
+}
+
+function closeSettingsPanel() {
+  const shell = document.getElementById('appShell');
+  const panel = document.getElementById('settingsPanel');
+  if (!shell || !panel) return;
+  draftSettings = { ...appSettings };
+  updateSettingsControls();
+  shell.classList.remove('settings-open');
+  panel.setAttribute('aria-hidden', 'true');
+}
+
+function isSettingsOpen() {
+  return document.getElementById('appShell')?.classList.contains('settings-open');
+}
+
+async function loadSearchShortcuts() {
+  try {
+    const result = await chrome.storage.local.get(SHORTCUTS_KEY);
+    searchShortcuts = Array.isArray(result[SHORTCUTS_KEY])
+      ? result[SHORTCUTS_KEY]
+      : [...DEFAULT_SHORTCUTS];
+  } catch (err) {
+    console.warn('[tab-out] Failed to load shortcuts:', err);
+    searchShortcuts = [...DEFAULT_SHORTCUTS];
+  }
+  renderSearchShortcuts();
+}
+
+async function persistSearchShortcuts() {
+  try {
+    await chrome.storage.local.set({ [SHORTCUTS_KEY]: searchShortcuts });
+  } catch (err) {
+    console.warn('[tab-out] Failed to save shortcuts:', err);
+  }
+}
+
+function normalizeShortcutUrl(url) {
+  const trimmed = (url || '').trim();
+  if (!trimmed) return '';
+  const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return new URL(withProtocol).href;
+}
+
+function getShortcutInitial(name) {
+  const trimmed = (name || '').trim();
+  return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
+}
+
+function getFaviconUrl(url, size = 32) {
+  try {
+    const domain = new URL(url).hostname;
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
+  } catch {
+    return '';
+  }
+}
+
+function createShortcutTile(shortcut, index) {
+  const tile = document.createElement('a');
+  tile.href = shortcut.url;
+  tile.className = 'shortcut-item';
+  tile.draggable = true;
+  tile.dataset.index = String(index);
+  tile.title = shortcut.name;
+
+  tile.addEventListener('dragstart', event => {
+    activeShortcutDrag = { index };
+    tile.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  });
+
+  tile.addEventListener('dragend', () => {
+    tile.classList.remove('dragging');
+    activeShortcutDrag = null;
+  });
+
+  tile.addEventListener('contextmenu', event => {
+    event.preventDefault();
+    openShortcutModal(index);
+  });
+
+  tile.addEventListener('click', event => {
+    if (suppressShortcutClick || tile.classList.contains('dragging')) {
+      event.preventDefault();
+      return;
+    }
+
+    if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault();
+      window.location.assign(shortcut.url);
+    }
+  });
+
+  const icon = document.createElement('span');
+  icon.className = 'shortcut-icon';
+
+  const favicon = document.createElement('img');
+  favicon.alt = '';
+  favicon.loading = 'lazy';
+
+  const fallback = document.createElement('span');
+  fallback.className = 'shortcut-icon-fallback';
+  fallback.textContent = getShortcutInitial(shortcut.name);
+
+  const faviconUrl = getFaviconUrl(shortcut.url);
+  if (faviconUrl) {
+    favicon.src = faviconUrl;
+  } else {
+    favicon.style.display = 'none';
+    fallback.classList.add('visible');
+  }
+
+  favicon.addEventListener('error', () => {
+    favicon.style.display = 'none';
+    fallback.classList.add('visible');
+  });
+  favicon.addEventListener('load', () => {
+    favicon.style.display = 'block';
+    fallback.classList.remove('visible');
+  });
+
+  icon.append(favicon, fallback);
+
+  const text = document.createElement('span');
+  text.className = 'shortcut-text';
+  text.textContent = shortcut.name;
+
+  tile.append(icon, text);
+  return tile;
+}
+
+function createAddShortcutTile() {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'shortcut-item add-shortcut';
+  button.dataset.action = 'open-shortcut-modal';
+
+  const icon = document.createElement('span');
+  icon.className = 'shortcut-icon';
+  icon.textContent = '+';
+
+  const text = document.createElement('span');
+  text.className = 'shortcut-text';
+  text.textContent = t('addShortcut');
+
+  button.append(icon, text);
+  return button;
+}
+
+function renderSearchShortcuts() {
+  const strip = document.getElementById('shortcutStrip');
+  if (!strip) return;
+
+  strip.innerHTML = '';
+  searchShortcuts.forEach((shortcut, index) => {
+    strip.appendChild(createShortcutTile(shortcut, index));
+  });
+  strip.appendChild(createAddShortcutTile());
+}
+
+function getShortcutDropReference(container, clientX, clientY) {
+  const items = [...container.querySelectorAll('.shortcut-item[data-index]:not(.dragging)')];
+  if (!items.length) return null;
+
+  return items.reduce((closest, item) => {
+    const rect = item.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(clientX - centerX, clientY - centerY);
+    if (distance >= closest.distance) return closest;
+    const sameRow = Math.abs(clientY - centerY) <= rect.height / 2;
+    return { item, before: clientY < centerY || (sameRow && clientX < centerX), distance };
+  }, { item: null, before: false, distance: Number.POSITIVE_INFINITY });
+}
+
+function openShortcutModal(index = -1) {
+  const modal = document.getElementById('shortcutModal');
+  const indexInput = document.getElementById('shortcutEditIndex');
+  const nameInput = document.getElementById('shortcutNameInput');
+  const urlInput = document.getElementById('shortcutUrlInput');
+  const deleteButton = document.getElementById('shortcutDeleteButton');
+  if (!modal || !indexInput || !nameInput || !urlInput || !deleteButton) return;
+
+  const shortcut = searchShortcuts[index];
+  indexInput.value = String(index);
+  nameInput.value = shortcut?.name || '';
+  urlInput.value = shortcut?.url || '';
+  deleteButton.style.display = index >= 0 ? 'inline-flex' : 'none';
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  setTimeout(() => nameInput.focus(), 0);
+}
+
+function closeShortcutModal() {
+  const modal = document.getElementById('shortcutModal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+async function saveShortcutFromModal() {
+  const indexInput = document.getElementById('shortcutEditIndex');
+  const nameInput = document.getElementById('shortcutNameInput');
+  const urlInput = document.getElementById('shortcutUrlInput');
+  if (!indexInput || !nameInput || !urlInput) return;
+
+  const index = Number.parseInt(indexInput.value, 10);
+  const name = nameInput.value.trim();
+  const rawUrl = urlInput.value.trim();
+  if (!name || !rawUrl) {
+    showToast(t('shortcutNameUrlRequired'));
+    return;
+  }
+
+  let url;
+  try {
+    url = normalizeShortcutUrl(rawUrl);
+  } catch {
+    showToast(t('invalidShortcutUrl'));
+    return;
+  }
+
+  const nextShortcut = { name, url };
+  if (Number.isInteger(index) && index >= 0 && index < searchShortcuts.length) {
+    searchShortcuts[index] = nextShortcut;
+  } else {
+    searchShortcuts.push(nextShortcut);
+  }
+
+  await persistSearchShortcuts();
+  renderSearchShortcuts();
+  closeShortcutModal();
+  showToast(t('shortcutSaved'));
+}
+
+async function deleteShortcutFromModal() {
+  const indexInput = document.getElementById('shortcutEditIndex');
+  if (!indexInput) return;
+
+  const index = Number.parseInt(indexInput.value, 10);
+  if (!Number.isInteger(index) || index < 0 || index >= searchShortcuts.length) return;
+
+  searchShortcuts.splice(index, 1);
+  await persistSearchShortcuts();
+  renderSearchShortcuts();
+  closeShortcutModal();
+  showToast(t('shortcutDeleted'));
+}
+
+async function reorderSearchShortcuts(fromIndex, toIndex) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+  if (fromIndex >= searchShortcuts.length || toIndex >= searchShortcuts.length) return;
+
+  const next = [...searchShortcuts];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  searchShortcuts = next;
+  await persistSearchShortcuts();
+  renderSearchShortcuts();
+}
+
+function handleSearchSubmit(event) {
+  const form = event.target.closest('form[data-search-engine]');
+  if (!form) return;
+  event.preventDefault();
+
+  const engine = form.dataset.searchEngine;
+  const input = form.querySelector('input[type="search"]');
+  const query = input?.value.trim();
+  if (!query) {
+    input?.focus();
+    return;
+  }
+
+  const targetUrl = engine === 'baidu'
+    ? `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`
+    : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  window.location.assign(targetUrl);
+}
+
 
 /* ----------------------------------------------------------------
    CHROME TABS — Direct API Access
 
-   Since this page IS the extension's new tab page, it has full
+   Since this page IS an extension page, it has full
    access to chrome.tabs and chrome.storage. No middleman needed.
    ---------------------------------------------------------------- */
 
@@ -35,8 +614,7 @@ let openTabs = [];
 async function fetchOpenTabs() {
   try {
     const extensionId = chrome.runtime.id;
-    // The new URL for this page is now index.html (not newtab.html)
-    const newtabUrl = `chrome-extension://${extensionId}/index.html`;
+    const dashboardUrl = `chrome-extension://${extensionId}/index.html`;
 
     const tabs = await chrome.tabs.query({});
     openTabs = tabs.map(t => ({
@@ -45,8 +623,8 @@ async function fetchOpenTabs() {
       title:    t.title,
       windowId: t.windowId,
       active:   t.active,
-      // Flag Tab Out's own pages so we can detect duplicate new tabs
-      isTabOut: t.url === newtabUrl || t.url === 'chrome://newtab/',
+      // Flag Tab Out's own dashboard page so we can detect duplicate dashboards
+      isTabOut: t.url === dashboardUrl,
     }));
   } catch {
     // chrome.tabs API unavailable (shouldn't happen in an extension page)
@@ -172,17 +750,15 @@ async function closeDuplicateTabs(urls, keepOne = true) {
 /**
  * closeTabOutDupes()
  *
- * Closes all duplicate Tab Out new-tab pages except the current one.
+ * Closes all duplicate Tab Out dashboard pages except the current one.
  */
 async function closeTabOutDupes() {
   const extensionId = chrome.runtime.id;
-  const newtabUrl = `chrome-extension://${extensionId}/index.html`;
+  const dashboardUrl = `chrome-extension://${extensionId}/index.html`;
 
   const allTabs = await chrome.tabs.query({});
   const currentWindow = await chrome.windows.getCurrent();
-  const tabOutTabs = allTabs.filter(t =>
-    t.url === newtabUrl || t.url === 'chrome://newtab/'
-  );
+  const tabOutTabs = allTabs.filter(t => t.url === dashboardUrl);
 
   if (tabOutTabs.length <= 1) return;
 
@@ -461,13 +1037,13 @@ function checkAndShowEmptyState() {
           <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
         </svg>
       </div>
-      <div class="empty-title">Inbox zero, but for tabs.</div>
-      <div class="empty-subtitle">You're free.</div>
+      <div class="empty-title">${t('inboxZeroTitle')}</div>
+      <div class="empty-subtitle">${t('inboxZeroSubtitle')}</div>
     </div>
   `;
 
   const countEl = document.getElementById('openTabsSectionCount');
-  if (countEl) countEl.textContent = '0 domains';
+  if (countEl) countEl.textContent = t('domains', 0);
 }
 
 /**
@@ -491,26 +1067,62 @@ function timeAgo(dateStr) {
   return diffDays + ' days ago';
 }
 
-/**
- * getGreeting() — "Good morning / afternoon / evening"
- */
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+function getGreetingPeriod(hour) {
+  if (hour < 5) return 'lateNight';
+  if (hour < 8) return 'dawn';
+  if (hour < 12) return 'morning';
+  if (hour < 14) return 'noon';
+  if (hour < 17) return 'afternoon';
+  if (hour < 20) return 'evening';
+  if (hour < 23) return 'night';
+  return 'lateNight';
+}
+
+function pickStablePhrase(phrases, now) {
+  if (!phrases?.length) return '';
+  const seed = now.getFullYear() + now.getMonth() + now.getDate() + now.getHours();
+  return phrases[seed % phrases.length];
 }
 
 /**
- * getDateDisplay() — "Friday, April 4, 2026"
+ * getGreeting() — localized, time-aware greeting.
  */
-function getDateDisplay() {
-  return new Date().toLocaleDateString('en-US', {
+function getGreeting(now = new Date()) {
+  const lang = appSettings.language === 'zh' ? 'zh' : 'en';
+  const period = getGreetingPeriod(now.getHours());
+  const phrases = GREETING_PHRASES[lang]?.[period] || GREETING_PHRASES.en.morning;
+  return pickStablePhrase(phrases, now);
+}
+
+/**
+ * getDateTimeDisplay() — localized date + live time down to seconds.
+ */
+function getDateTimeDisplay(now = new Date()) {
+  const locale = appSettings.language === 'zh' ? 'zh-CN' : 'en-US';
+  return new Intl.DateTimeFormat(locale, {
     weekday: 'long',
-    year:    'numeric',
-    month:   'long',
-    day:     'numeric',
-  });
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: appSettings.language !== 'zh',
+  }).format(now);
+}
+
+function updateHeaderClock() {
+  const now = new Date();
+  const greetingEl = document.getElementById('greeting');
+  const dateEl = document.getElementById('dateDisplay');
+  if (greetingEl) greetingEl.textContent = getGreeting(now);
+  if (dateEl) dateEl.textContent = getDateTimeDisplay(now);
+}
+
+function startHeaderClock() {
+  updateHeaderClock();
+  if (headerClockTimer) return;
+  headerClockTimer = setInterval(updateHeaderClock, 1000);
 }
 
 
@@ -769,13 +1381,13 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
     try { domain = new URL(tab.url).hostname; } catch {}
     const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="">` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
-        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
+        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="${t('savedForLater')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">
+        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="${t('closeThisTab')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -815,12 +1427,12 @@ function renderDomainCard(group) {
 
   const tabBadge = `<span class="open-tabs-badge">
     ${ICONS.tabs}
-    ${tabCount} tab${tabCount !== 1 ? 's' : ''} open
+    ${t('tabsOpen', tabCount)}
   </span>`;
 
   const dupeBadge = hasDupes
     ? `<span class="open-tabs-badge" style="color:var(--accent-amber);background:rgba(200,113,58,0.08);">
-        ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}
+        ${t('duplicateBadge', totalExtras)}
       </span>`
     : '';
 
@@ -850,13 +1462,13 @@ function renderDomainCard(group) {
     try { domain = new URL(tab.url).hostname; } catch {}
     const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="">` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
-        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
+        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="${t('savedForLater')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">
+        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="${t('closeThisTab')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -866,14 +1478,14 @@ function renderDomainCard(group) {
   let actionsHtml = `
     <button class="action-btn close-tabs" data-action="close-domain-tabs" data-domain-id="${stableId}">
       ${ICONS.close}
-      Close all ${tabCount} tab${tabCount !== 1 ? 's' : ''}
+      ${t('closeAllTabs', tabCount)}
     </button>`;
 
   if (hasDupes) {
     const dupeUrlsEncoded = dupeUrls.map(([url]) => encodeURIComponent(url)).join(',');
     actionsHtml += `
       <button class="action-btn" data-action="dedup-keep-one" data-dupe-urls="${dupeUrlsEncoded}">
-        Close ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}
+        ${t('closeDuplicates', totalExtras)}
       </button>`;
   }
 
@@ -882,7 +1494,7 @@ function renderDomainCard(group) {
       <div class="status-bar"></div>
       <div class="mission-content">
         <div class="mission-top">
-          <span class="mission-name">${isLanding ? 'Homepages' : (group.label || friendlyDomain(group.domain))}</span>
+          <span class="mission-name">${isLanding ? t('homepages') : (group.label || friendlyDomain(group.domain))}</span>
           ${tabBadge}
           ${dupeBadge}
         </div>
@@ -891,7 +1503,7 @@ function renderDomainCard(group) {
       </div>
       <div class="mission-meta">
         <div class="mission-page-count">${tabCount}</div>
-        <div class="mission-page-label">tabs</div>
+        <div class="mission-page-label">${t('tabs', tabCount).replace(String(tabCount), '').trim() || 'tabs'}</div>
       </div>
     </div>`;
 }
@@ -916,6 +1528,8 @@ async function renderDeferredColumn() {
   const archiveEl      = document.getElementById('deferredArchive');
   const archiveCountEl = document.getElementById('archiveCount');
   const archiveList    = document.getElementById('archiveList');
+  const archiveBody    = document.getElementById('archiveBody');
+  const archiveToggle  = document.getElementById('archiveToggle');
 
   if (!column) return;
 
@@ -932,7 +1546,7 @@ async function renderDeferredColumn() {
 
     // Render active checklist items
     if (active.length > 0) {
-      countEl.textContent = `${active.length} item${active.length !== 1 ? 's' : ''}`;
+      countEl.textContent = t('savedItems', active.length);
       list.innerHTML = active.map(item => renderDeferredItem(item)).join('');
       list.style.display = 'block';
       empty.style.display = 'none';
@@ -947,8 +1561,12 @@ async function renderDeferredColumn() {
       archiveCountEl.textContent = `(${archived.length})`;
       archiveList.innerHTML = archived.map(item => renderArchiveItem(item)).join('');
       archiveEl.style.display = 'block';
+      if (archiveBody) archiveBody.style.display = 'block';
+      if (archiveToggle) archiveToggle.classList.add('open');
     } else {
       archiveEl.style.display = 'none';
+      if (archiveBody) archiveBody.style.display = 'none';
+      if (archiveToggle) archiveToggle.classList.remove('open');
     }
 
   } catch (err) {
@@ -974,7 +1592,7 @@ function renderDeferredItem(item) {
       <input type="checkbox" class="deferred-checkbox" data-action="check-deferred" data-deferred-id="${item.id}">
       <div class="deferred-info">
         <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
-          <img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" onerror="this.style.display='none'">${item.title || item.url}
+          <img class="deferred-favicon" src="${faviconUrl}" alt="">${item.title || item.url}
         </a>
         <div class="deferred-meta">
           <span>${domain}</span>
@@ -1021,10 +1639,7 @@ function renderArchiveItem(item) {
  */
 async function renderStaticDashboard() {
   // --- Header ---
-  const greetingEl = document.getElementById('greeting');
-  const dateEl     = document.getElementById('dateDisplay');
-  if (greetingEl) greetingEl.textContent = getGreeting();
-  if (dateEl)     dateEl.textContent     = getDateDisplay();
+  updateHeaderClock();
 
   // --- Fetch tabs ---
   await fetchOpenTabs();
@@ -1149,8 +1764,8 @@ async function renderStaticDashboard() {
   const openTabsSectionTitle = document.getElementById('openTabsSectionTitle');
 
   if (domainGroups.length > 0 && openTabsSection) {
-    if (openTabsSectionTitle) openTabsSectionTitle.textContent = 'Open tabs';
-    openTabsSectionCount.innerHTML = `${domainGroups.length} domain${domainGroups.length !== 1 ? 's' : ''} &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} Close all ${realTabs.length} tabs</button>`;
+    if (openTabsSectionTitle) openTabsSectionTitle.textContent = t('openTabsTitle');
+    openTabsSectionCount.innerHTML = `${t('domains', domainGroups.length)} &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} ${t('closeAllTabs', realTabs.length)}</button>`;
     openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
     openTabsSection.style.display = 'block';
   } else if (openTabsSection) {
@@ -1169,6 +1784,12 @@ async function renderStaticDashboard() {
 }
 
 async function renderDashboard() {
+  await loadSettings();
+  await loadSearchShortcuts();
+  applyLanguage();
+  updateSettingsControls();
+  renderSearchShortcuts();
+  startHeaderClock();
   await renderStaticDashboard();
 }
 
@@ -1182,11 +1803,93 @@ async function renderDashboard() {
    ---------------------------------------------------------------- */
 
 document.addEventListener('click', async (e) => {
+  const clickedInsideSettings = !!e.target.closest('#settingsPanel');
+  const clickedSettingsToggle = !!e.target.closest('[data-action="open-settings"]');
+  if (isSettingsOpen() && !clickedInsideSettings && !clickedSettingsToggle) {
+    closeSettingsPanel();
+  }
+
   // Walk up the DOM to find the nearest element with data-action
   const actionEl = e.target.closest('[data-action]');
   if (!actionEl) return;
 
   const action = actionEl.dataset.action;
+
+  if (action === 'open-shortcut-modal') {
+    e.preventDefault();
+    openShortcutModal();
+    return;
+  }
+
+  if (action === 'close-shortcut-modal') {
+    e.preventDefault();
+    closeShortcutModal();
+    return;
+  }
+
+  if (action === 'save-shortcut') {
+    e.preventDefault();
+    await saveShortcutFromModal();
+    return;
+  }
+
+  if (action === 'delete-shortcut') {
+    e.preventDefault();
+    await deleteShortcutFromModal();
+    return;
+  }
+
+  if (action === 'open-settings') {
+    e.preventDefault();
+    openSettingsPanel();
+    return;
+  }
+
+  if (action === 'close-settings') {
+    e.preventDefault();
+    closeSettingsPanel();
+    return;
+  }
+
+  if (action === 'cancel-settings') {
+    e.preventDefault();
+    closeSettingsPanel();
+    return;
+  }
+
+  if (action === 'set-language') {
+    const language = actionEl.dataset.value;
+    if (!I18N[language]) return;
+    draftSettings = { ...draftSettings, language };
+    updateSettingsControls();
+    return;
+  }
+
+  if (action === 'toggle-new-tab-override') {
+    e.preventDefault();
+    draftSettings = {
+      ...draftSettings,
+      replaceChromeNewTab: !draftSettings.replaceChromeNewTab,
+    };
+    updateSettingsControls();
+    return;
+  }
+
+  if (action === 'save-settings') {
+    e.preventDefault();
+    appSettings = { ...DEFAULT_SETTINGS, ...draftSettings };
+    await persistSettings(appSettings);
+    await refreshLocalizedUI();
+    showToast(t('settingsSaved'));
+    return;
+  }
+
+  if (action === 'refresh-tabs') {
+    e.preventDefault();
+    await refreshLocalizedUI();
+    showToast(t('tabsRefreshed'));
+    return;
+  }
 
   // ---- Close duplicate Tab Out tabs ----
   if (action === 'close-tabout-dupes') {
@@ -1198,7 +1901,7 @@ document.addEventListener('click', async (e) => {
       banner.style.opacity = '0';
       setTimeout(() => { banner.style.display = 'none'; banner.style.opacity = '1'; }, 400);
     }
-    showToast('Closed extra Tab Out tabs');
+    showToast(t('closedExtraTabs'));
     return;
   }
 
@@ -1260,7 +1963,7 @@ document.addEventListener('click', async (e) => {
     const statTabs = document.getElementById('statTabs');
     if (statTabs) statTabs.textContent = openTabs.length;
 
-    showToast('Tab closed');
+    showToast(t('tabClosed'));
     return;
   }
 
@@ -1276,7 +1979,7 @@ document.addEventListener('click', async (e) => {
       await saveTabForLater({ url: tabUrl, title: tabTitle });
     } catch (err) {
       console.error('[tab-out] Failed to save tab:', err);
-      showToast('Failed to save tab');
+      showToast(t('failedToSave'));
       return;
     }
 
@@ -1295,7 +1998,7 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => chip.remove(), 200);
     }
 
-    showToast('Saved for later');
+    showToast(t('savedForLaterToast'));
     await renderDeferredColumn();
     return;
   }
@@ -1368,8 +2071,8 @@ document.addEventListener('click', async (e) => {
     const idx = domainGroups.indexOf(group);
     if (idx !== -1) domainGroups.splice(idx, 1);
 
-    const groupLabel = group.domain === '__landing-pages__' ? 'Homepages' : (group.label || friendlyDomain(group.domain));
-    showToast(`Closed ${urls.length} tab${urls.length !== 1 ? 's' : ''} from ${groupLabel}`);
+    const groupLabel = group.domain === '__landing-pages__' ? t('homepages') : (group.label || friendlyDomain(group.domain));
+    showToast(t('closedFrom', urls.length, groupLabel));
 
     const statTabs = document.getElementById('statTabs');
     if (statTabs) statTabs.textContent = openTabs.length;
@@ -1408,7 +2111,7 @@ document.addEventListener('click', async (e) => {
       card.classList.add('has-neutral-bar');
     }
 
-    showToast('Closed duplicates, kept one copy each');
+    showToast(t('closedDuplicatesToast'));
     return;
   }
 
@@ -1428,9 +2131,51 @@ document.addEventListener('click', async (e) => {
       animateCardOut(c);
     });
 
-    showToast('All tabs closed. Fresh start.');
+    showToast(t('allTabsClosed'));
     return;
   }
+});
+
+document.addEventListener('submit', handleSearchSubmit);
+
+document.addEventListener('dragover', event => {
+  const strip = event.target.closest('#shortcutStrip');
+  if (!strip || !activeShortcutDrag) return;
+  event.preventDefault();
+
+  const dragging = strip.querySelector('.shortcut-item.dragging');
+  if (!dragging) return;
+
+  const addButton = strip.querySelector('.add-shortcut');
+  const reference = getShortcutDropReference(strip, event.clientX, event.clientY);
+  if (!reference?.item) {
+    strip.insertBefore(dragging, addButton);
+  } else if (reference.before) {
+    strip.insertBefore(dragging, reference.item);
+  } else {
+    strip.insertBefore(dragging, reference.item.nextSibling || addButton);
+  }
+});
+
+document.addEventListener('drop', async event => {
+  const strip = event.target.closest('#shortcutStrip');
+  if (!strip || !activeShortcutDrag) return;
+  event.preventDefault();
+
+  const orderedItems = [...strip.querySelectorAll('.shortcut-item[data-index]')];
+  const dropIndex = orderedItems.findIndex(item => item.classList.contains('dragging'));
+  if (dropIndex !== -1) {
+    await reorderSearchShortcuts(activeShortcutDrag.index, dropIndex);
+    suppressShortcutClick = true;
+    setTimeout(() => {
+      suppressShortcutClick = false;
+    }, 0);
+  }
+});
+
+document.addEventListener('keydown', async event => {
+  if (event.key !== 'Escape') return;
+  closeShortcutModal();
 });
 
 // ---- Archive toggle — expand/collapse the archive section ----
@@ -1469,9 +2214,26 @@ document.addEventListener('input', async (e) => {
     );
 
     archiveList.innerHTML = results.map(item => renderArchiveItem(item)).join('')
-      || '<div style="font-size:12px;color:var(--muted);padding:8px 0">No results</div>';
+      || `<div style="font-size:12px;color:var(--muted);padding:8px 0">${t('noResults')}</div>`;
   } catch (err) {
     console.warn('[tab-out] Archive search failed:', err);
+  }
+});
+
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+
+  if (changes[SETTINGS_KEY]?.newValue) {
+    appSettings = { ...DEFAULT_SETTINGS, ...changes[SETTINGS_KEY].newValue };
+    if (!isSettingsOpen()) draftSettings = { ...appSettings };
+    refreshLocalizedUI();
+  }
+
+  if (changes[SHORTCUTS_KEY]?.newValue) {
+    searchShortcuts = Array.isArray(changes[SHORTCUTS_KEY].newValue)
+      ? changes[SHORTCUTS_KEY].newValue
+      : [...DEFAULT_SHORTCUTS];
+    renderSearchShortcuts();
   }
 });
 

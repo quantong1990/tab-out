@@ -13,6 +13,13 @@
  *   Red    (#b35a5a) → 21+ tabs   (time to cull!)
  */
 
+const SETTINGS_KEY = 'tabOutSettings';
+
+const DEFAULT_SETTINGS = {
+  language: 'en',
+  replaceChromeNewTab: false,
+};
+
 // ─── Badge updater ────────────────────────────────────────────────────────────
 
 /**
@@ -60,6 +67,55 @@ async function updateBadge() {
   }
 }
 
+/**
+ * openDashboard()
+ *
+ * Opens Tab Out from the toolbar icon or keyboard shortcut.
+ * This always opens the dashboard, regardless of the user's new-tab setting.
+ */
+async function openDashboard() {
+  try {
+    const url = chrome.runtime.getURL('index.html');
+    await chrome.tabs.create({ url, active: true });
+  } catch (err) {
+    console.error('[Tab Out] Failed to open dashboard:', err);
+  }
+}
+
+async function getSettings() {
+  try {
+    const result = await chrome.storage.local.get(SETTINGS_KEY);
+    return { ...DEFAULT_SETTINGS, ...(result[SETTINGS_KEY] || {}) };
+  } catch (err) {
+    console.warn('[Tab Out] Failed to load settings:', err);
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function isNativeNewTabUrl(url = '') {
+  return (
+    url === 'chrome://newtab/' ||
+    url.startsWith('chrome-search://local-ntp/') ||
+    url.startsWith('chrome://new-tab-page/')
+  );
+}
+
+async function redirectNewTabIfEnabled(tab) {
+  try {
+    if (!tab?.id) return;
+
+    const settings = await getSettings();
+    if (!settings.replaceChromeNewTab) return;
+
+    const tabUrl = tab.pendingUrl || tab.url || '';
+    if (!isNativeNewTabUrl(tabUrl)) return;
+
+    await chrome.tabs.update(tab.id, { url: chrome.runtime.getURL('index.html') });
+  } catch (err) {
+    console.warn('[Tab Out] Failed to redirect new tab:', err);
+  }
+}
+
 // ─── Event listeners ──────────────────────────────────────────────────────────
 
 // Update badge when the extension is first installed
@@ -73,8 +129,9 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // Update badge whenever a tab is opened
-chrome.tabs.onCreated.addListener(() => {
+chrome.tabs.onCreated.addListener((tab) => {
   updateBadge();
+  redirectNewTabIfEnabled(tab);
 });
 
 // Update badge whenever a tab is closed
@@ -83,8 +140,22 @@ chrome.tabs.onRemoved.addListener(() => {
 });
 
 // Update badge when a tab's URL changes (e.g. navigating to/from chrome://)
-chrome.tabs.onUpdated.addListener(() => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   updateBadge();
+  if (changeInfo.url) {
+    redirectNewTabIfEnabled({ ...tab, id: tabId, url: changeInfo.url });
+  }
+});
+
+// Open the dashboard when the user clicks the extension toolbar icon
+chrome.action.onClicked.addListener(() => {
+  openDashboard();
+});
+
+// Also handle keyboard shortcut
+chrome.commands.onCommand.addListener(() => {
+  console.log('[Tab Out] Keyboard shortcut triggered');
+  openDashboard();
 });
 
 // ─── Initial run ─────────────────────────────────────────────────────────────

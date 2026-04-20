@@ -2,7 +2,7 @@
 
 **Keep tabs on your tabs.**
 
-Tab Out is a Chrome extension that replaces your new tab page with a dashboard of everything you have open. Tabs are grouped by domain, with homepages (Gmail, X, LinkedIn, etc.) pulled into their own group. Close tabs with a satisfying swoosh + confetti.
+Tab Out is a Chrome extension that opens a dashboard of everything you have open. Tabs are grouped by domain, with homepages (Gmail, X, LinkedIn, etc.) pulled into their own group. Close tabs with a satisfying swoosh + confetti.
 
 No server. No account. No external API calls. Just a Chrome extension.
 
@@ -22,6 +22,9 @@ The agent will walk you through it. Takes about 1 minute.
 
 ## Features
 
+- **Optional new-tab replacement** stays off by default to avoid conflicts, and can be enabled in Settings
+- **Open the dashboard from the extension icon** or with the Alt+Shift+T shortcut
+- **Settings side panel** changes language without leaving the dashboard
 - **See all your tabs at a glance** on a clean grid, grouped by domain
 - **Homepages group** pulls Gmail inbox, X home, YouTube, LinkedIn, GitHub homepages into one card
 - **Close tabs with style** with swoosh sound + confetti burst
@@ -50,17 +53,19 @@ git clone https://github.com/zarazhangrui/tab-out.git
 3. Click **Load unpacked**
 4. Navigate to the `extension/` folder inside the cloned repo and select it
 
-**3. Open a new tab**
+**3. Open Tab Out**
 
-You'll see Tab Out.
+Click the Tab Out extension icon, or use **Alt+Shift+T**.
+
+Chrome's native new tab page stays untouched by default. To make new tabs open Tab Out, enable it in Settings.
 
 ---
 
 ## How it works
 
 ```
-You open a new tab
-  -> Tab Out shows your open tabs grouped by domain
+You click the Tab Out extension icon, press Alt+Shift+T, or enable new-tab replacement in Settings
+  -> Tab Out opens its own page and shows your open tabs grouped by domain
   -> Homepages (Gmail, X, etc.) get their own group at the top
   -> Click any tab title to jump to it
   -> Close groups you're done with (swoosh + confetti)

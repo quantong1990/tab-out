@@ -12,7 +12,8 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="container">
+<div class="app-shell" id="appShell">
+<main class="container" id="mainPanel">
 
 
 
@@ -21,11 +22,45 @@
        ================================================================ -->
   <header>
     <div class="header-left">
-      <!-- "Good afternoon" — written by getGreeting() in app.js -->
-      <h1 id="greeting"></h1>
-      <!-- "Friday, April 4, 2026" — written by getDateDisplay() in app.js -->
-      <div class="date" id="dateDisplay"></div>
+      <div class="header-copy">
+        <!-- "Good afternoon" — written by getGreeting() in app.js -->
+        <h1 id="greeting"></h1>
+        <!-- "Friday, April 4, 2026" — written by getDateDisplay() in app.js -->
+        <div class="date" id="dateDisplay"></div>
+      </div>
+      <button class="header-settings-btn" data-action="open-settings" type="button" aria-label="Open settings" title="Settings">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <circle cx="12" cy="12" r="3" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.23.55.76.91 1.35.91H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+        </svg>
+      </button>
     </div>
+
+    <section class="search-hub" aria-label="Search">
+      <div class="search-grid">
+        <form class="search-card search-card-google" data-search-engine="google">
+          <label class="search-label" for="googleSearchInput">
+            <img class="search-logo" src="assets/google-logo.png" alt="Google">
+          </label>
+          <div class="search-control">
+            <input id="googleSearchInput" type="search" autocomplete="off" placeholder="Search Google" data-i18n-placeholder="searchGoogle">
+            <button type="submit" data-i18n="googleSearchButton">Search</button>
+          </div>
+        </form>
+
+        <form class="search-card search-card-baidu" data-search-engine="baidu">
+          <label class="search-label" for="baiduSearchInput">
+            <img class="search-logo" src="assets/baidu-logo.png" alt="Baidu">
+          </label>
+          <div class="search-control">
+            <input id="baiduSearchInput" type="search" autocomplete="off" placeholder="Search Baidu" data-i18n-placeholder="searchBaidu">
+            <button type="submit" data-i18n="baiduSearchButton">Search</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="shortcut-strip" id="shortcutStrip" aria-label="Shortcuts"></div>
+    </section>
   </header>
 
   <!-- ================================================================
@@ -40,10 +75,10 @@
         </svg>
       </div>
       <div class="tab-cleanup-text">
-        You have <strong id="tabOutDupeCount"></strong> Tab Out tabs open. Keep just this one?
+        <span data-i18n="dupePrefix">You have</span> <strong id="tabOutDupeCount"></strong> <span data-i18n="dupeSuffix">Tab Out tabs open. Keep just this one?</span>
       </div>
     </div>
-    <button class="tab-cleanup-btn" data-action="close-tabout-dupes">Close extras</button>
+    <button class="tab-cleanup-btn" data-action="close-tabout-dupes" data-i18n="closeExtras">Close extras</button>
   </div>
 
   <!-- ================================================================
@@ -57,8 +92,13 @@
     <!-- LEFT COLUMN: Open tabs -->
     <div class="active-section" id="openTabsSection" style="display:none">
       <div class="section-header">
-        <h2 id="openTabsSectionTitle">Right now</h2>
+        <h2 id="openTabsSectionTitle" data-i18n="openTabsTitle">Open tabs</h2>
         <div class="section-line"></div>
+        <button class="section-refresh-btn" data-action="refresh-tabs" type="button" aria-label="Refresh tabs" title="Refresh">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356M20.49 9A9 9 0 1 0 21 12" />
+          </svg>
+        </button>
         <div class="section-count" id="openTabsSectionCount"></div>
       </div>
       <div class="missions" id="openTabsMissions"></div>
@@ -67,7 +107,7 @@
     <!-- RIGHT COLUMN: Saved for Later checklist -->
     <div class="deferred-column" id="deferredColumn" style="display:none">
       <div class="section-header">
-        <h2>Saved for later</h2>
+        <h2 data-i18n="savedForLater">Saved for later</h2>
         <div class="section-line"></div>
         <div class="section-count" id="deferredCount"></div>
       </div>
@@ -77,18 +117,18 @@
 
       <!-- Empty state — shown when no active deferred tabs -->
       <div class="deferred-empty" id="deferredEmpty" style="display:none">
-        Nothing saved. Living in the moment.
+        <span data-i18n="nothingSaved">Nothing saved. Living in the moment.</span>
       </div>
 
       <!-- Archive section — collapsed by default -->
       <div class="deferred-archive" id="deferredArchive" style="display:none">
         <button class="archive-toggle" id="archiveToggle">
           <svg class="archive-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-          Archive
+          <span data-i18n="archive">Archive</span>
           <span class="archive-count" id="archiveCount"></span>
         </button>
         <div class="archive-body" id="archiveBody" style="display:none">
-          <input type="text" class="archive-search" id="archiveSearch" placeholder="Search archived tabs...">
+          <input type="text" class="archive-search" id="archiveSearch" placeholder="Search archived tabs..." data-i18n-placeholder="searchArchived">
           <div class="archive-list" id="archiveList"></div>
         </div>
       </div>
@@ -103,7 +143,7 @@
     <div class="footer-stats">
       <div class="stat">
         <div class="stat-num" id="statTabs">—</div>
-        <div class="stat-label">Open tabs</div>
+        <div class="stat-label" data-i18n="openTabsStat">Open tabs</div>
       </div>
     </div>
     <div class="last-refresh">
@@ -111,7 +151,58 @@
     </div>
   </footer>
 
-</div><!-- end .container -->
+</main><!-- end .container -->
+
+<aside class="settings-panel" id="settingsPanel" aria-hidden="true">
+  <div class="settings-header">
+    <div>
+      <h2 data-i18n="settings">Settings</h2>
+      <p data-i18n="settingsSubtitle">Make Tab Out fit the way you browse.</p>
+    </div>
+    <button class="settings-close" data-action="close-settings" aria-label="Close settings">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+
+  <section class="settings-card">
+    <h3 data-i18n="languageTitle">Language</h3>
+    <p data-i18n="languageDesc">Choose a language, then save to apply it.</p>
+    <div class="segmented-control" role="radiogroup" aria-label="Language">
+      <button class="segmented-option" data-action="set-language" data-value="en">English</button>
+      <button class="segmented-option" data-action="set-language" data-value="zh">中文</button>
+    </div>
+  </section>
+
+  <section class="settings-card">
+    <h3 data-i18n="newTabTitle">New Tab</h3>
+    <p data-i18n="newTabDesc">Choose what Chrome opens when you create a new tab.</p>
+    <button class="checkbox-choice" data-action="toggle-new-tab-override" type="button" aria-pressed="false">
+      <span class="checkbox-box">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      </span>
+      <span class="checkbox-copy">
+        <strong data-i18n="replaceChromeNewTab">Replace Chrome's new tab page with Tab Out</strong>
+        <small data-i18n="replaceChromeNewTabDesc">When off, Tab Out leaves Chrome's new tab page and other new-tab extensions alone.</small>
+      </span>
+    </button>
+  </section>
+
+  <section class="settings-card">
+    <h3 data-i18n="shortcutTitle">Shortcut</h3>
+    <p data-i18n="shortcutDesc">Use this keyboard shortcut to open Tab Out from anywhere in Chrome.</p>
+    <div class="shortcut-pill" id="shortcutDisplay">Alt + Shift + T</div>
+  </section>
+
+  <div class="settings-actions">
+    <button class="settings-action-btn secondary" data-action="cancel-settings" data-i18n="cancelSettings">Cancel</button>
+    <button class="settings-action-btn primary" data-action="save-settings" data-i18n="saveSettings">Save</button>
+  </div>
+</aside>
+</div><!-- end .app-shell -->
 
 <!-- ================================================================
      TOAST — floats above everything, used for action confirmations
@@ -125,9 +216,30 @@
   <span id="toastText"></span>
 </div>
 
+<div class="shortcut-modal" id="shortcutModal" aria-hidden="true">
+  <div class="shortcut-modal-card" role="dialog" aria-modal="true" aria-labelledby="shortcutModalTitle">
+    <button class="shortcut-modal-close" data-action="close-shortcut-modal" aria-label="Close shortcut editor">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+    <h2 id="shortcutModalTitle" data-i18n="shortcutModalTitle">Shortcut</h2>
+    <input type="hidden" id="shortcutEditIndex" value="-1">
+    <label for="shortcutNameInput" data-i18n="shortcutNameLabel">Name</label>
+    <input type="text" id="shortcutNameInput" autocomplete="off" placeholder="GitHub" data-i18n-placeholder="shortcutNamePlaceholder">
+    <label for="shortcutUrlInput" data-i18n="shortcutUrlLabel">URL</label>
+    <input type="url" id="shortcutUrlInput" autocomplete="off" placeholder="https://github.com" data-i18n-placeholder="shortcutUrlPlaceholder">
+    <div class="shortcut-modal-actions">
+      <button class="shortcut-delete-btn" id="shortcutDeleteButton" data-action="delete-shortcut" type="button" data-i18n="deleteShortcut">Delete</button>
+      <button class="settings-action-btn secondary" data-action="close-shortcut-modal" type="button" data-i18n="cancelSettings">Cancel</button>
+      <button class="settings-action-btn primary" data-action="save-shortcut" type="button" data-i18n="saveSettings">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Personal config (gitignored) — defines LOCAL_LANDING_PAGE_PATTERNS etc. -->
 <!-- If the file doesn't exist, that's fine — app.js uses sensible defaults. -->
-<script src="config.local.js" onerror="/* no personal config, that's fine */"></script>
+<script src="config.local.js"></script>
 
 <!-- Main dashboard logic — loads last so the DOM is ready -->
 <script src="app.js"></script>
