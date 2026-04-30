@@ -36,6 +36,7 @@ let searchShortcuts = [];
 let activeShortcutDrag = null;
 let suppressShortcutClick = false;
 let headerClockTimer = null;
+let dashboardRefreshInFlight = null;
 
 const I18N = {
   en: {
@@ -81,6 +82,8 @@ const I18N = {
     closeAllTabs: count => `Close all ${count} tab${count !== 1 ? 's' : ''}`,
     duplicateBadge: count => `${count} duplicate${count !== 1 ? 's' : ''}`,
     closeDuplicates: count => `Close ${count} duplicate${count !== 1 ? 's' : ''}`,
+    closeAllCompact: count => `Close all (${count})`,
+    saveAllForLaterCompact: count => `Save for later (${count})`,
     savedItems: count => `${count} item${count !== 1 ? 's' : ''}`,
     inboxZeroTitle: 'Inbox zero, but for tabs.',
     inboxZeroSubtitle: "You're free.",
@@ -92,6 +95,7 @@ const I18N = {
     tabClosed: 'Tab closed',
     closeThisTab: 'Close this tab',
     savedForLaterToast: 'Saved for later',
+    savedTabsForLaterToast: count => `Saved ${count} tab${count !== 1 ? 's' : ''} for later`,
     failedToSave: 'Failed to save tab',
     closedFrom: (count, label) => `Closed ${count} tab${count !== 1 ? 's' : ''} from ${label}`,
     closedDuplicatesToast: 'Closed duplicates, kept one copy each',
@@ -144,6 +148,8 @@ const I18N = {
     closeAllTabs: count => `关闭全部 ${count} 个标签`,
     duplicateBadge: count => `${count} 个重复`,
     closeDuplicates: count => `关闭 ${count} 个重复标签`,
+    closeAllCompact: count => `关闭全部(${count})`,
+    saveAllForLaterCompact: count => `稍后查看(${count})`,
     savedItems: count => `${count} 项`,
     inboxZeroTitle: '标签页版 Inbox Zero。',
     inboxZeroSubtitle: '你自由了。',
@@ -155,6 +161,7 @@ const I18N = {
     tabClosed: '标签已关闭',
     closeThisTab: '关闭这个标签',
     savedForLaterToast: '已保存到稍后查看',
+    savedTabsForLaterToast: count => `已保存 ${count} 个标签到稍后查看`,
     failedToSave: '保存失败',
     closedFrom: (count, label) => `已从 ${label} 关闭 ${count} 个标签`,
     closedDuplicatesToast: '已关闭重复标签，并保留一份',
@@ -814,6 +821,28 @@ async function saveTabForLater(tab) {
   await chrome.storage.local.set({ deferred });
 }
 
+async function saveTabsForLater(tabs) {
+  if (!Array.isArray(tabs) || tabs.length === 0) return 0;
+
+  const { deferred = [] } = await chrome.storage.local.get('deferred');
+  const now = Date.now();
+  const savedAt = new Date().toISOString();
+
+  tabs.forEach((tab, index) => {
+    deferred.push({
+      id:        `${now}-${index}`,
+      url:       tab.url,
+      title:     tab.title || tab.url,
+      savedAt,
+      completed: false,
+      dismissed: false,
+    });
+  });
+
+  await chrome.storage.local.set({ deferred });
+  return tabs.length;
+}
+
 /**
  * getSavedTabs()
  *
@@ -1310,6 +1339,7 @@ function smartTitle(title, url) {
 const ICONS = {
   tabs:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8.25V18a2.25 2.25 0 0 0 2.25 2.25h13.5A2.25 2.25 0 0 0 21 18V8.25m-18 0V6a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 6v2.25m-18 0h18" /></svg>`,
   close:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>`,
+  bookmark:`<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>`,
   archive: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m6 4.125l2.25 2.25m0 0l2.25 2.25M12 13.875l2.25-2.25M12 13.875l-2.25 2.25M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" /></svg>`,
   focus:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25" /></svg>`,
 };
@@ -1347,21 +1377,14 @@ function getRealTabs() {
 /**
  * checkTabOutDupes()
  *
- * Counts how many Tab Out pages are open. If more than 1,
- * shows a banner offering to close the extras.
+ * The background service worker now handles duplicate Tab Out pages by
+ * focusing the existing dashboard and closing the extra tab.
  */
 function checkTabOutDupes() {
-  const tabOutTabs = openTabs.filter(t => t.isTabOut);
   const banner  = document.getElementById('tabOutDupeBanner');
-  const countEl = document.getElementById('tabOutDupeCount');
   if (!banner) return;
 
-  if (tabOutTabs.length > 1) {
-    if (countEl) countEl.textContent = tabOutTabs.length;
-    banner.style.display = 'flex';
-  } else {
-    banner.style.display = 'none';
-  }
+  banner.style.display = 'none';
 }
 
 
@@ -1478,7 +1501,11 @@ function renderDomainCard(group) {
   let actionsHtml = `
     <button class="action-btn close-tabs" data-action="close-domain-tabs" data-domain-id="${stableId}">
       ${ICONS.close}
-      ${t('closeAllTabs', tabCount)}
+      ${t('closeAllCompact', tabCount)}
+    </button>
+    <button class="action-btn save-tabs" data-action="defer-domain-tabs" data-domain-id="${stableId}">
+      ${ICONS.bookmark}
+      ${t('saveAllForLaterCompact', tabCount)}
     </button>`;
 
   if (hasDupes) {
@@ -1793,6 +1820,32 @@ async function renderDashboard() {
   await renderStaticDashboard();
 }
 
+async function refreshDashboardFromBackground() {
+  if (dashboardRefreshInFlight) return dashboardRefreshInFlight;
+
+  dashboardRefreshInFlight = refreshLocalizedUI()
+    .catch(err => {
+      console.warn('[tab-out] Background refresh failed:', err);
+    })
+    .finally(() => {
+      dashboardRefreshInFlight = null;
+    });
+
+  return dashboardRefreshInFlight;
+}
+
+async function notifyDashboardReady() {
+  try {
+    const currentTab = await chrome.tabs.getCurrent();
+    chrome.runtime.sendMessage({
+      type: 'TAB_OUT_DASHBOARD_READY',
+      tabId: currentTab?.id,
+    });
+  } catch (err) {
+    console.warn('[tab-out] Failed to notify background:', err);
+  }
+}
+
 
 /* ----------------------------------------------------------------
    EVENT HANDLERS — using event delegation
@@ -2079,6 +2132,25 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  // ---- Save all tabs in a domain group for later ----
+  if (action === 'defer-domain-tabs') {
+    const domainId = actionEl.dataset.domainId;
+    const group    = domainGroups.find(g => {
+      return 'domain-' + g.domain.replace(/[^a-z0-9]/g, '-') === domainId;
+    });
+    if (!group) return;
+
+    try {
+      const savedCount = await saveTabsForLater(group.tabs);
+      await renderDeferredColumn();
+      showToast(t('savedTabsForLaterToast', savedCount));
+    } catch (err) {
+      console.error('[tab-out] Failed to save tabs:', err);
+      showToast(t('failedToSave'));
+    }
+    return;
+  }
+
   // ---- Close duplicates, keep one copy ----
   if (action === 'dedup-keep-one') {
     const urlsEncoded = actionEl.dataset.dupeUrls || '';
@@ -2237,8 +2309,15 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
   }
 });
 
+chrome.runtime?.onMessage?.addListener((message) => {
+  if (message?.type !== 'TAB_OUT_REFRESH_TABS') return false;
+
+  refreshDashboardFromBackground();
+  return false;
+});
+
 
 /* ----------------------------------------------------------------
    INITIALIZE
    ---------------------------------------------------------------- */
-renderDashboard();
+renderDashboard().then(notifyDashboardReady);

@@ -20,6 +20,40 @@ const DEFAULT_SETTINGS = {
   replaceChromeNewTab: false,
 };
 
+function getDashboardUrl() {
+  return chrome.runtime.getURL('index.html');
+}
+
+async function getDashboardTabs() {
+  const dashboardUrl = getDashboardUrl();
+  const tabs = await chrome.tabs.query({});
+  return tabs.filter(tab => tab.url === dashboardUrl || tab.pendingUrl === dashboardUrl);
+}
+
+async function refreshDashboard(tabId) {
+  try {
+    await chrome.runtime.sendMessage({ type: 'TAB_OUT_REFRESH_TABS' });
+  } catch {
+    // The dashboard may still be loading. Reloading gives it a fresh tab query
+    // without depending on the page message listener being ready.
+    try {
+      await chrome.tabs.reload(tabId);
+    } catch {}
+  }
+}
+
+async function focusDashboard(tab, { refresh = true } = {}) {
+  if (!tab?.id) return;
+  await chrome.tabs.update(tab.id, { active: true });
+  if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true });
+  if (refresh) await refreshDashboard(tab.id);
+}
+
+async function findExistingDashboard(excludeTabId = null) {
+  const dashboardTabs = await getDashboardTabs();
+  return dashboardTabs.find(tab => tab.id !== excludeTabId) || null;
+}
+
 // ─── Badge updater ────────────────────────────────────────────────────────────
 
 /**
@@ -75,8 +109,13 @@ async function updateBadge() {
  */
 async function openDashboard() {
   try {
-    const url = chrome.runtime.getURL('index.html');
-    await chrome.tabs.create({ url, active: true });
+    const existing = await findExistingDashboard();
+    if (existing) {
+      await focusDashboard(existing);
+      return;
+    }
+
+    await chrome.tabs.create({ url: getDashboardUrl(), active: true });
   } catch (err) {
     console.error('[Tab Out] Failed to open dashboard:', err);
   }
@@ -110,10 +149,27 @@ async function redirectNewTabIfEnabled(tab) {
     const tabUrl = tab.pendingUrl || tab.url || '';
     if (!isNativeNewTabUrl(tabUrl)) return;
 
-    await chrome.tabs.update(tab.id, { url: chrome.runtime.getURL('index.html') });
+    const existing = await findExistingDashboard(tab.id);
+    if (existing) {
+      await focusDashboard(existing);
+      await chrome.tabs.remove(tab.id);
+      return;
+    }
+
+    await chrome.tabs.update(tab.id, { url: getDashboardUrl() });
   } catch (err) {
     console.warn('[Tab Out] Failed to redirect new tab:', err);
   }
+}
+
+async function handleDashboardOpened(tabId) {
+  if (!tabId) return;
+
+  const existing = await findExistingDashboard(tabId);
+  if (!existing) return;
+
+  await focusDashboard(existing);
+  await chrome.tabs.remove(tabId);
 }
 
 // ─── Event listeners ──────────────────────────────────────────────────────────
@@ -156,6 +212,15 @@ chrome.action.onClicked.addListener(() => {
 chrome.commands.onCommand.addListener(() => {
   console.log('[Tab Out] Keyboard shortcut triggered');
   openDashboard();
+});
+
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message?.type !== 'TAB_OUT_DASHBOARD_READY') return false;
+
+  handleDashboardOpened(sender.tab?.id || message.tabId).catch(err => {
+    console.warn('[Tab Out] Failed to focus existing dashboard:', err);
+  });
+  return false;
 });
 
 // ─── Initial run ─────────────────────────────────────────────────────────────
