@@ -143,37 +143,21 @@ header {
 }
 
 .search-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 48px;
+  display: flex;
+  justify-content: center;
   width: 100%;
 }
 
 .search-card {
   min-width: 0;
-  width: min(100%, 380px);
-  justify-self: center;
-}
-
-.search-label {
-  display: flex;
-  align-items: flex-end;
-  height: 58px;
-  margin-bottom: 12px;
-  cursor: text;
-}
-
-.search-logo {
-  display: block;
-  width: 96px;
-  height: 33.6px;
-  object-fit: contain;
+  width: min(100%, 720px);
 }
 
 .search-control {
   display: flex;
+  align-items: center;
   min-width: 0;
-  height: 42px;
+  height: 46px;
   border: 1px solid var(--warm-gray);
   border-radius: 999px;
   background: var(--card-bg);
@@ -197,7 +181,7 @@ header {
   color: var(--ink);
   font-family: 'DM Sans', sans-serif;
   font-size: 14px;
-  padding: 0 14px;
+  padding: 0 18px;
 }
 
 .search-control input::placeholder {
@@ -206,16 +190,35 @@ header {
 
 .search-control button {
   flex: 0 0 auto;
+  min-width: 84px;
+  height: 100%;
   border: 0;
   border-left: 1px solid var(--warm-gray);
   background: rgba(154, 145, 138, 0.08);
   color: var(--ink);
   font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   padding: 0 14px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+}
+
+.search-button-logo {
+  display: block;
+  object-fit: contain;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.search-button-logo-google {
+  width: 54px;
+  height: 19px;
+}
+
+.search-button-logo-baidu {
+  width: 52px;
+  height: 18px;
 }
 
 .search-control button:hover {
@@ -1593,8 +1596,13 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
     flex-direction: column;
   }
 
-  .search-grid {
-    grid-template-columns: 1fr;
+  .search-card {
+    width: 100%;
+  }
+
+  .search-control button {
+    min-width: 72px;
+    padding: 0 12px;
   }
 
   .app-shell.settings-open .settings-panel {

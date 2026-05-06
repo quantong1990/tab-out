@@ -38,23 +38,15 @@
 
     <section class="search-hub" aria-label="Search">
       <div class="search-grid">
-        <form class="search-card search-card-google" data-search-engine="google">
-          <label class="search-label" for="googleSearchInput">
-            <img class="search-logo" src="assets/google-logo.png" alt="Google">
-          </label>
+        <form class="search-card search-combo" data-search-engine="google">
           <div class="search-control">
-            <input id="googleSearchInput" type="search" autocomplete="off" placeholder="Search Google" data-i18n-placeholder="searchGoogle">
-            <button type="submit" data-i18n="googleSearchButton">Search</button>
-          </div>
-        </form>
-
-        <form class="search-card search-card-baidu" data-search-engine="baidu">
-          <label class="search-label" for="baiduSearchInput">
-            <img class="search-logo" src="assets/baidu-logo.png" alt="Baidu">
-          </label>
-          <div class="search-control">
-            <input id="baiduSearchInput" type="search" autocomplete="off" placeholder="Search Baidu" data-i18n-placeholder="searchBaidu">
-            <button type="submit" data-i18n="baiduSearchButton">Search</button>
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Search" data-i18n-placeholder="searchPlaceholder">
+            <button type="submit" data-search-engine="google" aria-label="Search Google" title="Google">
+              <img class="search-button-logo search-button-logo-google" src="assets/google-logo.png" alt="">
+            </button>
+            <button type="submit" data-search-engine="baidu" aria-label="Search Baidu" title="Baidu">
+              <img class="search-button-logo search-button-logo-baidu" src="assets/baidu-logo.png" alt="">
+            </button>
           </div>
         </form>
       </div>

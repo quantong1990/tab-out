@@ -60,10 +60,9 @@ const I18N = {
     openTabsStat: 'Open tabs',
     openTabsTitle: 'Open tabs',
     refreshTabs: 'Refresh',
+    searchPlaceholder: 'Search the web',
     searchGoogle: 'Search Google',
     searchBaidu: 'Search Baidu',
-    googleSearchButton: 'Search',
-    baiduSearchButton: 'Search',
     addShortcut: 'Add',
     shortcutModalTitle: 'Shortcut',
     shortcutNameLabel: 'Name',
@@ -126,10 +125,9 @@ const I18N = {
     openTabsStat: '打开的标签',
     openTabsTitle: '打开的标签',
     refreshTabs: '刷新',
+    searchPlaceholder: '搜索网页',
     searchGoogle: 'Google 搜索',
     searchBaidu: '百度搜索',
-    googleSearchButton: '搜索',
-    baiduSearchButton: '搜索',
     addShortcut: '添加',
     shortcutModalTitle: '快捷方式',
     shortcutNameLabel: '名称',
@@ -587,7 +585,7 @@ function handleSearchSubmit(event) {
   if (!form) return;
   event.preventDefault();
 
-  const engine = form.dataset.searchEngine;
+  const engine = event.submitter?.dataset.searchEngine || form.dataset.searchEngine;
   const input = form.querySelector('input[type="search"]');
   const query = input?.value.trim();
   if (!query) {
