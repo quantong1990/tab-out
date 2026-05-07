@@ -17,6 +17,7 @@
 
 const SETTINGS_KEY = 'tabOutSettings';
 const SHORTCUTS_KEY = 'searchShortcuts';
+const SHORTCUT_ICON_REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_SETTINGS = {
   language: 'en',
@@ -35,6 +36,7 @@ let draftSettings = { ...DEFAULT_SETTINGS };
 let searchShortcuts = [];
 let activeShortcutDrag = null;
 let suppressShortcutClick = false;
+let shortcutIconRefreshInFlight = null;
 let headerClockTimer = null;
 let dashboardRefreshInFlight = null;
 
@@ -50,6 +52,9 @@ const I18N = {
     replaceChromeNewTabDesc: "When off, Tab Out leaves Chrome's new tab page and other new-tab extensions alone.",
     shortcutTitle: 'Shortcut',
     shortcutDesc: 'Use this keyboard shortcut to open Tab Out from anywhere in Chrome.',
+    refreshShortcutIcons: 'Update shortcut icons',
+    shortcutIconsRefreshed: (checked, updated) => `Shortcut icons checked: ${checked} checked, ${updated} updated`,
+    shortcutIconsRefreshFailed: 'Could not update shortcut icons',
     dupePrefix: 'You have',
     dupeSuffix: 'Tab Out tabs open. Keep just this one?',
     closeExtras: 'Close extras',
@@ -115,6 +120,9 @@ const I18N = {
     replaceChromeNewTabDesc: '关闭时，Tab Out 不接管 Chrome 新标签页，也不影响其他新标签页扩展。',
     shortcutTitle: '快捷键',
     shortcutDesc: '在 Chrome 任意位置使用这个快捷键打开 Tab Out。',
+    refreshShortcutIcons: '更新快捷方式图标',
+    shortcutIconsRefreshed: (checked, updated) => `快捷方式图标已检查：${checked} 个检查，${updated} 个更新`,
+    shortcutIconsRefreshFailed: '无法更新快捷方式图标',
     dupePrefix: '你打开了',
     dupeSuffix: '个 Tab Out 页面。只保留当前这个？',
     closeExtras: '关闭多余页面',
@@ -336,14 +344,19 @@ function isSettingsOpen() {
 async function loadSearchShortcuts() {
   try {
     const result = await chrome.storage.local.get(SHORTCUTS_KEY);
-    searchShortcuts = Array.isArray(result[SHORTCUTS_KEY])
+    const storedShortcuts = Array.isArray(result[SHORTCUTS_KEY])
       ? result[SHORTCUTS_KEY]
       : [...DEFAULT_SHORTCUTS];
+    searchShortcuts = storedShortcuts.map(normalizeShortcut);
+    if (JSON.stringify(searchShortcuts) !== JSON.stringify(storedShortcuts)) {
+      await persistSearchShortcuts();
+    }
   } catch (err) {
     console.warn('[tab-out] Failed to load shortcuts:', err);
-    searchShortcuts = [...DEFAULT_SHORTCUTS];
+    searchShortcuts = DEFAULT_SHORTCUTS.map(normalizeShortcut);
   }
   renderSearchShortcuts();
+  refreshShortcutIcons();
 }
 
 async function persistSearchShortcuts() {
@@ -366,13 +379,137 @@ function getShortcutInitial(name) {
   return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 }
 
-function getFaviconUrl(url, size = 32) {
+function normalizeShortcut(shortcut) {
+  return {
+    name: shortcut?.name || '',
+    url: shortcut?.url || '',
+    iconUrl: shortcut?.iconUrl || '',
+    iconStatus: shortcut?.iconUrl && shortcut?.iconStatus !== 'missing' ? 'loaded' : 'missing',
+    iconCheckedAt: Number.isFinite(shortcut?.iconCheckedAt) ? shortcut.iconCheckedAt : 0,
+  };
+}
+
+function createShortcutRecord(name, url, existingShortcut = null) {
+  const canKeepIcon = existingShortcut?.url === url && existingShortcut?.iconUrl;
+  return normalizeShortcut({
+    name,
+    url,
+    iconUrl: canKeepIcon ? existingShortcut.iconUrl : '',
+    iconStatus: canKeepIcon ? existingShortcut.iconStatus : 'missing',
+    iconCheckedAt: canKeepIcon ? existingShortcut.iconCheckedAt : 0,
+  });
+}
+
+function getFaviconUrl(url, size = 32, cacheBust = '') {
   try {
-    const domain = new URL(url).hostname;
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
+    const pageUrl = new URL(url).href;
+    const params = new URLSearchParams({ pageUrl, size: String(size) });
+    if (cacheBust) params.set('tabOutIconCheck', cacheBust);
+    return `${chrome.runtime.getURL('_favicon/')}?${params.toString()}`;
   } catch {
     return '';
   }
+}
+
+function loadShortcutIcon(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(url), { once: true });
+    image.addEventListener('error', () => reject(new Error(`Could not load shortcut icon: ${url}`)), { once: true });
+    image.src = url;
+  });
+}
+
+async function fetchShortcutIconDataUrl(url) {
+  const faviconUrl = getFaviconUrl(url, 32, String(Date.now()));
+  if (!faviconUrl) return '';
+  return loadShortcutIcon(faviconUrl);
+}
+
+function shouldRefreshShortcutIcon(shortcut, now = Date.now()) {
+  if (!shortcut?.url) return false;
+  if (!shortcut.iconUrl || shortcut.iconStatus !== 'loaded') return true;
+  return !shortcut.iconCheckedAt || now - shortcut.iconCheckedAt >= SHORTCUT_ICON_REFRESH_INTERVAL_MS;
+}
+
+async function refreshShortcutIcons({ force = false } = {}) {
+  if (shortcutIconRefreshInFlight) return shortcutIconRefreshInFlight;
+
+  shortcutIconRefreshInFlight = (async () => {
+    const now = Date.now();
+    const refreshTargets = searchShortcuts
+      .map((shortcut, index) => ({ shortcut, index }))
+      .filter(({ shortcut }) => force ? !!shortcut?.url : shouldRefreshShortcutIcon(shortcut, now));
+
+    const stats = { checked: refreshTargets.length, updated: 0 };
+    if (!refreshTargets.length) return stats;
+
+    let changed = false;
+    for (const { shortcut, index } of refreshTargets) {
+      const originalUrl = shortcut.url;
+      try {
+        const iconUrl = await fetchShortcutIconDataUrl(originalUrl);
+        const currentShortcut = searchShortcuts[index];
+        if (!currentShortcut || currentShortcut.url !== originalUrl) continue;
+
+        if (iconUrl) {
+          if (currentShortcut.iconUrl !== iconUrl) stats.updated += 1;
+          searchShortcuts[index] = {
+            ...currentShortcut,
+            iconUrl,
+            iconStatus: 'loaded',
+            iconCheckedAt: Date.now(),
+          };
+          changed = true;
+        } else if (currentShortcut.iconUrl) {
+          searchShortcuts[index] = {
+            ...currentShortcut,
+            iconStatus: 'loaded',
+            iconCheckedAt: Date.now(),
+          };
+          changed = true;
+        } else if (currentShortcut.iconStatus !== 'missing') {
+          searchShortcuts[index] = {
+            ...currentShortcut,
+            iconUrl: '',
+            iconStatus: 'missing',
+          };
+          changed = true;
+        }
+      } catch (err) {
+        const currentShortcut = searchShortcuts[index];
+        if (!currentShortcut || currentShortcut.url !== originalUrl) continue;
+
+        if (currentShortcut.iconUrl) {
+          searchShortcuts[index] = {
+            ...currentShortcut,
+            iconStatus: 'loaded',
+            iconCheckedAt: Date.now(),
+          };
+          changed = true;
+        } else if (currentShortcut.iconStatus !== 'missing') {
+          searchShortcuts[index] = {
+            ...currentShortcut,
+            iconUrl: '',
+            iconStatus: 'missing',
+          };
+          changed = true;
+        }
+        console.warn('[tab-out] Failed to refresh shortcut icon:', err);
+      }
+    }
+
+    if (changed) {
+      await persistSearchShortcuts();
+      renderSearchShortcuts();
+    }
+
+    return stats;
+  })().finally(() => {
+    shortcutIconRefreshInFlight = null;
+  });
+
+  return shortcutIconRefreshInFlight;
 }
 
 function createShortcutTile(shortcut, index) {
@@ -423,9 +560,8 @@ function createShortcutTile(shortcut, index) {
   fallback.className = 'shortcut-icon-fallback';
   fallback.textContent = getShortcutInitial(shortcut.name);
 
-  const faviconUrl = getFaviconUrl(shortcut.url);
-  if (faviconUrl) {
-    favicon.src = faviconUrl;
+  if (shortcut.iconUrl) {
+    favicon.src = shortcut.iconUrl;
   } else {
     favicon.style.display = 'none';
     fallback.classList.add('visible');
@@ -541,7 +677,10 @@ async function saveShortcutFromModal() {
     return;
   }
 
-  const nextShortcut = { name, url };
+  const existingShortcut = Number.isInteger(index) && index >= 0 && index < searchShortcuts.length
+    ? searchShortcuts[index]
+    : null;
+  const nextShortcut = createShortcutRecord(name, url, existingShortcut);
   if (Number.isInteger(index) && index >= 0 && index < searchShortcuts.length) {
     searchShortcuts[index] = nextShortcut;
   } else {
@@ -550,6 +689,7 @@ async function saveShortcutFromModal() {
 
   await persistSearchShortcuts();
   renderSearchShortcuts();
+  refreshShortcutIcons();
   closeShortcutModal();
   showToast(t('shortcutSaved'));
 }
@@ -1942,6 +2082,21 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  if (action === 'refresh-shortcut-icons') {
+    e.preventDefault();
+    actionEl.disabled = true;
+    try {
+      const stats = await refreshShortcutIcons({ force: true });
+      showToast(t('shortcutIconsRefreshed', stats?.checked || 0, stats?.updated || 0));
+    } catch (err) {
+      console.warn('[tab-out] Manual shortcut icon refresh failed:', err);
+      showToast(t('shortcutIconsRefreshFailed'));
+    } finally {
+      actionEl.disabled = false;
+    }
+    return;
+  }
+
   // ---- Close duplicate Tab Out tabs ----
   if (action === 'close-tabout-dupes') {
     await closeTabOutDupes();
@@ -2301,9 +2456,10 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
 
   if (changes[SHORTCUTS_KEY]?.newValue) {
     searchShortcuts = Array.isArray(changes[SHORTCUTS_KEY].newValue)
-      ? changes[SHORTCUTS_KEY].newValue
-      : [...DEFAULT_SHORTCUTS];
+      ? changes[SHORTCUTS_KEY].newValue.map(normalizeShortcut)
+      : DEFAULT_SHORTCUTS.map(normalizeShortcut);
     renderSearchShortcuts();
+    refreshShortcutIcons();
   }
 });
 
