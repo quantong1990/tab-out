@@ -557,6 +557,21 @@ header {
   font-weight: 500;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.section-count-divider {
+  color: var(--warm-gray);
+}
+
+.section-action-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  letter-spacing: 0;
 }
 
 .section-refresh-btn {
@@ -925,6 +940,17 @@ header {
 .action-btn.save-tabs:hover {
   background: rgba(90, 122, 98, 0.1);
   border-color: var(--accent-sage);
+}
+
+.action-btn.dedup-tabs {
+  border-color: rgba(90, 107, 122, 0.3);
+  color: var(--accent-slate);
+  background: rgba(90, 107, 122, 0.04);
+}
+
+.action-btn.dedup-tabs:hover {
+  background: rgba(90, 107, 122, 0.1);
+  border-color: var(--accent-slate);
 }
 
 .action-btn.danger {
