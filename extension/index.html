@@ -70,10 +70,9 @@
   </div>
 
   <!-- ================================================================
-       MAIN CONTENT AREA — two-column layout
-       Left: open tabs (domain/mission cards)
-       Right: saved for later checklist
-       The right column only renders when it has items (JS controls this)
+       MAIN CONTENT AREA
+       Open tabs render first, then Saved for Later renders below it as
+       the same domain-card grid pattern.
        ================================================================ -->
   <div class="dashboard-columns" id="dashboardColumns">
 
@@ -92,34 +91,19 @@
       <div class="missions" id="openTabsMissions"></div>
     </div>
 
-    <!-- RIGHT COLUMN: Saved for Later checklist -->
-    <div class="deferred-column" id="deferredColumn" style="display:none">
+    <!-- Saved for Later: grouped domain cards using the open-tabs card layout -->
+    <div class="active-section" id="openTabsSection2" style="display:none">
       <div class="section-header">
-        <h2 data-i18n="savedForLater">Saved for later</h2>
+        <h2 id="openTabsSectionTitle2" data-i18n="savedForLater">稍后查看</h2>
         <div class="section-line"></div>
-        <div class="section-count" id="deferredCount"></div>
-      </div>
-
-      <!-- Active checklist items — injected by renderDeferredList() in app.js -->
-      <div class="deferred-list" id="deferredList"></div>
-
-      <!-- Empty state — shown when no active deferred tabs -->
-      <div class="deferred-empty" id="deferredEmpty" style="display:none">
-        <span data-i18n="nothingSaved">Nothing saved. Living in the moment.</span>
-      </div>
-
-      <!-- Archive section — collapsed by default -->
-      <div class="deferred-archive" id="deferredArchive" style="display:none">
-        <button class="archive-toggle" id="archiveToggle">
-          <svg class="archive-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-          <span data-i18n="archive">Archive</span>
-          <span class="archive-count" id="archiveCount"></span>
+        <button class="section-refresh-btn" data-action="refresh-tabs" type="button" aria-label="Refresh tabs" title="Refresh">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356M20.49 9A9 9 0 1 0 21 12" />
+          </svg>
         </button>
-        <div class="archive-body" id="archiveBody" style="display:none">
-          <input type="text" class="archive-search" id="archiveSearch" placeholder="Search archived tabs..." data-i18n-placeholder="searchArchived">
-          <div class="archive-list" id="archiveList"></div>
-        </div>
+        <div class="section-count" id="openTabsSectionCount2"></div>
       </div>
+      <div class="missions" id="openTabsMissions2"></div>
     </div>
 
   </div><!-- end .dashboard-columns -->
@@ -160,6 +144,87 @@
     <div class="segmented-control" role="radiogroup" aria-label="Language">
       <button class="segmented-option" data-action="set-language" data-value="en">English</button>
       <button class="segmented-option" data-action="set-language" data-value="zh">中文</button>
+    </div>
+  </section>
+
+  <section class="settings-card">
+    <h3 data-i18n="colorSchemeTitle">Color style</h3>
+    <p data-i18n="colorSchemeDesc">Switch the dashboard palette with one click.</p>
+    <div class="theme-grid" role="radiogroup" aria-label="Color style">
+      <button class="theme-choice theme-choice-warm" data-action="set-color-scheme" data-value="warm" type="button" aria-pressed="false" title="Warm">
+        <span class="theme-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <circle cx="12" cy="12" r="4" />
+            <path stroke-linecap="round" d="M12 2v2m0 16v2M4 12H2m20 0h-2M5.64 5.64 4.22 4.22m15.56 15.56-1.42-1.42m0-12.72 1.42-1.42M4.22 19.78l1.42-1.42" />
+          </svg>
+        </span>
+        <span data-i18n="themeWarm">Warm</span>
+      </button>
+      <button class="theme-choice theme-choice-forest" data-action="set-color-scheme" data-value="forest" type="button" aria-pressed="false" title="Forest">
+        <span class="theme-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 21c8 0 14-6 14-14V3h-4C7 3 3 8 3 15v1c0 2 1 5 2 5Z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 20 15 9" />
+          </svg>
+        </span>
+        <span data-i18n="themeForest">Forest</span>
+      </button>
+      <button class="theme-choice theme-choice-coast" data-action="set-color-scheme" data-value="coast" type="button" aria-pressed="false" title="Coast">
+        <span class="theme-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 15c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 2-2" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 19c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 2-2" />
+          </svg>
+        </span>
+        <span data-i18n="themeCoast">Coast</span>
+      </button>
+      <button class="theme-choice theme-choice-dusk" data-action="set-color-scheme" data-value="dusk" type="button" aria-pressed="false" title="Dusk">
+        <span class="theme-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z" />
+          </svg>
+        </span>
+        <span data-i18n="themeDusk">Dusk</span>
+      </button>
+      <button class="theme-choice theme-choice-dopamine" data-action="set-color-scheme" data-value="dopamine" type="button" aria-pressed="false" title="Dopamine">
+        <span class="theme-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <circle cx="7" cy="8" r="2.5" />
+            <circle cx="16.5" cy="6.5" r="2" />
+            <circle cx="16" cy="16" r="3" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="m9 9.5 5.5 5M14.6 7.4 9.2 8.1" />
+          </svg>
+        </span>
+        <span data-i18n="themeDopamine">Dopamine</span>
+      </button>
+    </div>
+  </section>
+
+  <section class="settings-card">
+    <h3 data-i18n="contentWidthTitle">Content width</h3>
+    <p data-i18n="contentWidthDesc">Choose how much of the page the dashboard should use.</p>
+    <div class="radio-stack" role="radiogroup" aria-label="Content width">
+      <button class="radio-choice" data-action="set-content-width" data-value="wide" type="button" aria-pressed="false">
+        <span class="radio-dot"></span>
+        <span>
+          <strong data-i18n="contentWidthWide">Wide</strong>
+          <small data-i18n="contentWidthWideDesc">Use more page width for denser tab grids.</small>
+        </span>
+      </button>
+      <button class="radio-choice" data-action="set-content-width" data-value="medium" type="button" aria-pressed="false">
+        <span class="radio-dot"></span>
+        <span>
+          <strong data-i18n="contentWidthMedium">Medium</strong>
+          <small data-i18n="contentWidthMediumDesc">Balanced width for everyday browsing.</small>
+        </span>
+      </button>
+      <button class="radio-choice" data-action="set-content-width" data-value="narrow" type="button" aria-pressed="false">
+        <span class="radio-dot"></span>
+        <span>
+          <strong data-i18n="contentWidthNarrow">Narrow</strong>
+          <small data-i18n="contentWidthNarrowDesc">Keep the dashboard focused and compact.</small>
+        </span>
+      </button>
     </div>
   </section>
 
@@ -213,6 +278,7 @@
       </svg>
     </button>
     <h2 id="shortcutModalTitle" data-i18n="shortcutModalTitle">Shortcut</h2>
+    <input type="hidden" id="shortcutGroupIndex" value="0">
     <input type="hidden" id="shortcutEditIndex" value="-1">
     <label for="shortcutNameInput" data-i18n="shortcutNameLabel">Name</label>
     <input type="text" id="shortcutNameInput" autocomplete="off" placeholder="GitHub" data-i18n-placeholder="shortcutNamePlaceholder">
@@ -222,6 +288,25 @@
       <button class="shortcut-delete-btn" id="shortcutDeleteButton" data-action="delete-shortcut" type="button" data-i18n="deleteShortcut">Delete</button>
       <button class="settings-action-btn secondary" data-action="close-shortcut-modal" type="button" data-i18n="cancelSettings">Cancel</button>
       <button class="settings-action-btn primary" data-action="save-shortcut" type="button" data-i18n="saveSettings">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="shortcut-modal" id="shortcutGroupModal" aria-hidden="true">
+  <div class="shortcut-modal-card" role="dialog" aria-modal="true" aria-labelledby="shortcutGroupModalTitle">
+    <button class="shortcut-modal-close" data-action="close-shortcut-group-modal" aria-label="Close shortcut group editor">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+    <h2 id="shortcutGroupModalTitle" data-i18n="shortcutGroupModalTitle">Shortcut group</h2>
+    <input type="hidden" id="shortcutGroupEditIndex" value="-1">
+    <label for="shortcutGroupNameInput" data-i18n="shortcutGroupNameLabel">Group name</label>
+    <input type="text" id="shortcutGroupNameInput" autocomplete="off" placeholder="Shortcuts" data-i18n-placeholder="shortcutGroupNamePrompt">
+    <div class="shortcut-modal-actions">
+      <button class="shortcut-delete-btn" id="shortcutGroupDeleteButton" data-action="delete-shortcut-group" type="button" data-i18n="deleteShortcutGroup">Delete group</button>
+      <button class="settings-action-btn secondary" data-action="close-shortcut-group-modal" type="button" data-i18n="cancelSettings">Cancel</button>
+      <button class="settings-action-btn primary" data-action="save-shortcut-group" type="button" data-i18n="saveSettings">Save</button>
     </div>
   </div>
 </div>

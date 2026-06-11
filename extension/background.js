@@ -44,7 +44,7 @@ async function refreshDashboard(tabId) {
 
 async function focusDashboard(tab, { refresh = true } = {}) {
   if (!tab?.id) return;
-  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.tabs.update(tab.id, { active: true, pinned: false });
   if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true });
   if (refresh) await refreshDashboard(tab.id);
 }
@@ -115,7 +115,7 @@ async function openDashboard() {
       return;
     }
 
-    await chrome.tabs.create({ url: getDashboardUrl(), active: true });
+    await chrome.tabs.create({ url: getDashboardUrl(), active: true, pinned: false });
   } catch (err) {
     console.error('[Tab Out] Failed to open dashboard:', err);
   }
@@ -156,7 +156,7 @@ async function redirectNewTabIfEnabled(tab) {
       return;
     }
 
-    await chrome.tabs.update(tab.id, { url: getDashboardUrl() });
+    await chrome.tabs.update(tab.id, { url: getDashboardUrl(), pinned: false });
   } catch (err) {
     console.warn('[Tab Out] Failed to redirect new tab:', err);
   }
