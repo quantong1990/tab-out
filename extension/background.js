@@ -20,6 +20,8 @@ const DEFAULT_SETTINGS = {
   replaceChromeNewTab: false,
 };
 
+const nativeNewTabRedirects = new Set();
+
 function getDashboardUrl() {
   return chrome.runtime.getURL('index.html');
 }
@@ -28,6 +30,14 @@ async function getDashboardTabs() {
   const dashboardUrl = getDashboardUrl();
   const tabs = await chrome.tabs.query({});
   return tabs.filter(tab => tab.url === dashboardUrl || tab.pendingUrl === dashboardUrl);
+}
+
+async function canRemoveTabWithoutEmptyingWindow(tabId) {
+  if (!tabId) return false;
+
+  const tab = await chrome.tabs.get(tabId);
+  const windowTabs = await chrome.tabs.query({ windowId: tab.windowId });
+  return windowTabs.length > 1;
 }
 
 async function refreshDashboard(tabId) {
@@ -52,6 +62,15 @@ async function focusDashboard(tab, { refresh = true } = {}) {
 async function findExistingDashboard(excludeTabId = null) {
   const dashboardTabs = await getDashboardTabs();
   return dashboardTabs.find(tab => tab.id !== excludeTabId) || null;
+}
+
+function rememberNativeNewTabRedirect(tabId) {
+  if (!tabId) return;
+
+  nativeNewTabRedirects.add(tabId);
+  setTimeout(() => {
+    nativeNewTabRedirects.delete(tabId);
+  }, 10000);
 }
 
 // ─── Badge updater ────────────────────────────────────────────────────────────
@@ -149,13 +168,7 @@ async function redirectNewTabIfEnabled(tab) {
     const tabUrl = tab.pendingUrl || tab.url || '';
     if (!isNativeNewTabUrl(tabUrl)) return;
 
-    const existing = await findExistingDashboard(tab.id);
-    if (existing) {
-      await focusDashboard(existing);
-      await chrome.tabs.remove(tab.id);
-      return;
-    }
-
+    rememberNativeNewTabRedirect(tab.id);
     await chrome.tabs.update(tab.id, { url: getDashboardUrl(), pinned: false });
   } catch (err) {
     console.warn('[Tab Out] Failed to redirect new tab:', err);
@@ -164,9 +177,14 @@ async function redirectNewTabIfEnabled(tab) {
 
 async function handleDashboardOpened(tabId) {
   if (!tabId) return;
+  if (nativeNewTabRedirects.has(tabId)) {
+    nativeNewTabRedirects.delete(tabId);
+    return;
+  }
 
   const existing = await findExistingDashboard(tabId);
   if (!existing) return;
+  if (!await canRemoveTabWithoutEmptyingWindow(tabId)) return;
 
   await focusDashboard(existing);
   await chrome.tabs.remove(tabId);

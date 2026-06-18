@@ -428,6 +428,17 @@ function updateSettingsControls() {
   });
 }
 
+function setHiddenState(el, hidden) {
+  if (!el) return;
+
+  if (hidden && el.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
+
+  el.toggleAttribute('inert', hidden);
+  el.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+}
+
 function openSettingsPanel() {
   const shell = document.getElementById('appShell');
   const panel = document.getElementById('settingsPanel');
@@ -435,7 +446,7 @@ function openSettingsPanel() {
   draftSettings = { ...appSettings };
   updateSettingsControls();
   shell.classList.add('settings-open');
-  panel.setAttribute('aria-hidden', 'false');
+  setHiddenState(panel, false);
 }
 
 function closeSettingsPanel() {
@@ -446,7 +457,7 @@ function closeSettingsPanel() {
   updateSettingsControls();
   applyColorScheme(appSettings.colorScheme);
   shell.classList.remove('settings-open');
-  panel.setAttribute('aria-hidden', 'true');
+  setHiddenState(panel, true);
 }
 
 function isSettingsOpen() {
@@ -868,7 +879,7 @@ function openShortcutModal(groupIndex = 0, shortcutIndex = -1) {
   urlInput.value = shortcut?.url || '';
   deleteButton.style.display = shortcutIndex >= 0 ? 'inline-flex' : 'none';
   modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
+  setHiddenState(modal, false);
   setTimeout(() => nameInput.focus(), 0);
 }
 
@@ -876,7 +887,7 @@ function closeShortcutModal() {
   const modal = document.getElementById('shortcutModal');
   if (!modal) return;
   modal.classList.remove('open');
-  modal.setAttribute('aria-hidden', 'true');
+  setHiddenState(modal, true);
 }
 
 async function saveShortcutFromModal() {
@@ -964,7 +975,7 @@ function openShortcutGroupModal(groupIndex = -1) {
   indexInput.value = String(groupIndex);
   nameInput.value = group.name;
   modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
+  setHiddenState(modal, false);
   setTimeout(() => nameInput.focus(), 0);
 }
 
@@ -972,7 +983,7 @@ function closeShortcutGroupModal() {
   const modal = document.getElementById('shortcutGroupModal');
   if (!modal) return;
   modal.classList.remove('open');
-  modal.setAttribute('aria-hidden', 'true');
+  setHiddenState(modal, true);
 }
 
 async function saveShortcutGroupFromModal() {
@@ -1074,6 +1085,16 @@ function handleSearchSubmit(event) {
 // All open tabs — populated by fetchOpenTabs()
 let openTabs = [];
 
+function isBrowserInternalUrl(url = '') {
+  return (
+    url.startsWith('chrome://') ||
+    url.startsWith('chrome-extension://') ||
+    url.startsWith('about:') ||
+    url.startsWith('edge://') ||
+    url.startsWith('brave://')
+  );
+}
+
 /**
  * fetchOpenTabs()
  *
@@ -1129,6 +1150,7 @@ async function closeTabsByUrls(urls) {
   const toClose = allTabs
     .filter(tab => {
       const tabUrl = tab.url || '';
+      if (isBrowserInternalUrl(tabUrl)) return false;
       if (tabUrl.startsWith('file://') && exactUrls.has(tabUrl)) return true;
       try {
         const tabHostname = new URL(tabUrl).hostname;
@@ -1151,7 +1173,9 @@ async function closeTabsExact(urls) {
   if (!urls || urls.length === 0) return;
   const urlSet = new Set(urls);
   const allTabs = await chrome.tabs.query({});
-  const toClose = allTabs.filter(t => urlSet.has(t.url)).map(t => t.id);
+  const toClose = allTabs
+    .filter(t => t.url && !isBrowserInternalUrl(t.url) && urlSet.has(t.url))
+    .map(t => t.id);
   if (toClose.length > 0) await chrome.tabs.remove(toClose);
   await fetchOpenTabs();
 }
@@ -1170,7 +1194,7 @@ async function closeTabByIdOrUrl(tabId, url) {
 
   if (!closed && url) {
     const allTabs = await chrome.tabs.query({});
-    const match = allTabs.find(t => t.url === url);
+    const match = allTabs.find(t => t.url && !isBrowserInternalUrl(t.url) && t.url === url);
     if (match) {
       await chrome.tabs.remove(match.id);
       closed = true;
@@ -1185,6 +1209,7 @@ async function closeTabsByIds(tabs) {
   if (!Array.isArray(tabs) || tabs.length === 0) return 0;
 
   const ids = tabs
+    .filter(tab => !isBrowserInternalUrl(tab.url || ''))
     .map(tab => tab.id)
     .filter(id => Number.isInteger(id) && id >= 0);
 
@@ -1241,9 +1266,12 @@ async function closeDuplicateTabs(urls, keepOne = true) {
   const toClose = [];
 
   for (const url of urls) {
-    const matching = allTabs.filter(t => t.url === url);
+    if (isBrowserInternalUrl(url || '')) continue;
+
+    const matching = allTabs.filter(t => t.url && !isBrowserInternalUrl(t.url) && t.url === url);
     if (keepOne) {
       const keep = matching.find(t => t.active) || matching[0];
+      if (!keep) continue;
       for (const tab of matching) {
         if (tab.id !== keep.id) toClose.push(tab.id);
       }
@@ -1991,13 +2019,7 @@ let domainGroups = [];
 function getRealTabs() {
   return openTabs.filter(t => {
     const url = t.url || '';
-    return (
-      !url.startsWith('chrome://') &&
-      !url.startsWith('chrome-extension://') &&
-      !url.startsWith('about:') &&
-      !url.startsWith('edge://') &&
-      !url.startsWith('brave://')
-    );
+    return !isBrowserInternalUrl(url);
   });
 }
 
@@ -3193,7 +3215,7 @@ document.addEventListener('click', async (e) => {
     if (!window.confirm(t('confirmCloseAllOpenTabs'))) return;
 
     const allUrls = openTabs
-      .filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:'))
+      .filter(t => t.url && !isBrowserInternalUrl(t.url))
       .map(t => t.url);
     await closeTabsByUrls(allUrls);
     playCloseSound();
