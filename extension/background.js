@@ -14,13 +14,20 @@
  */
 
 const SETTINGS_KEY = 'tabOutSettings';
+const DASHBOARD_TABS_SESSION_KEY = 'tabOutDashboardTabs';
 
 const DEFAULT_SETTINGS = {
   language: 'en',
   replaceChromeNewTab: false,
 };
 
-const nativeNewTabRedirects = new Set();
+const dashboardTabsById = new Map();
+const suppressedNativeNewTabs = new Set();
+const nativeNewTabRedirectsInFlight = new Set();
+const intentionalDashboardClosures = new Set();
+let dashboardOpenQueue = Promise.resolve();
+let dashboardTrackingQueue = Promise.resolve();
+let dashboardTrackingReady;
 
 function getDashboardUrl() {
   return chrome.runtime.getURL('index.html');
@@ -32,12 +39,50 @@ async function getDashboardTabs() {
   return tabs.filter(tab => tab.url === dashboardUrl || tab.pendingUrl === dashboardUrl);
 }
 
-async function canRemoveTabWithoutEmptyingWindow(tabId) {
-  if (!tabId) return false;
+function isDashboardTab(tab) {
+  const dashboardUrl = getDashboardUrl();
+  return tab?.url === dashboardUrl || tab?.pendingUrl === dashboardUrl;
+}
 
-  const tab = await chrome.tabs.get(tabId);
-  const windowTabs = await chrome.tabs.query({ windowId: tab.windowId });
-  return windowTabs.length > 1;
+async function persistDashboardTabTracking() {
+  const entries = Object.fromEntries(dashboardTabsById);
+  await chrome.storage.session.set({ [DASHBOARD_TABS_SESSION_KEY]: entries });
+}
+
+async function hydrateDashboardTabTracking() {
+  try {
+    const stored = await chrome.storage.session.get(DASHBOARD_TABS_SESSION_KEY);
+    const entries = stored[DASHBOARD_TABS_SESSION_KEY] || {};
+    Object.entries(entries).forEach(([tabId, windowId]) => {
+      dashboardTabsById.set(Number(tabId), windowId);
+    });
+
+    const currentDashboards = await getDashboardTabs();
+    currentDashboards.forEach(tab => dashboardTabsById.set(tab.id, tab.windowId));
+    await persistDashboardTabTracking();
+  } catch (err) {
+    console.warn('[Tab Out] Failed to restore dashboard tracking:', err);
+  }
+}
+
+function trackDashboardTab(tab) {
+  if (!tab?.id) return Promise.resolve();
+
+  dashboardTrackingQueue = dashboardTrackingQueue
+    .then(() => dashboardTrackingReady)
+    .then(async () => {
+      if (isDashboardTab(tab)) {
+        dashboardTabsById.set(tab.id, tab.windowId);
+      } else {
+        dashboardTabsById.delete(tab.id);
+      }
+      await persistDashboardTabTracking();
+    })
+    .catch(err => {
+      console.warn('[Tab Out] Failed to track dashboard tab:', err);
+    });
+
+  return dashboardTrackingQueue;
 }
 
 async function refreshDashboard(tabId) {
@@ -64,13 +109,55 @@ async function findExistingDashboard(excludeTabId = null) {
   return dashboardTabs.find(tab => tab.id !== excludeTabId) || null;
 }
 
-function rememberNativeNewTabRedirect(tabId) {
+function suppressNativeNewTab(tabId) {
   if (!tabId) return;
 
-  nativeNewTabRedirects.add(tabId);
+  suppressedNativeNewTabs.add(tabId);
   setTimeout(() => {
-    nativeNewTabRedirects.delete(tabId);
-  }, 10000);
+    suppressedNativeNewTabs.delete(tabId);
+  }, 3000);
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function closeTransientTabOrWindow(tab) {
+  if (!tab?.id || !tab.windowId) return;
+
+  const windowTabs = await chrome.tabs.query({ windowId: tab.windowId });
+  if (windowTabs.length <= 1) {
+    await chrome.windows.remove(tab.windowId);
+    return;
+  }
+
+  await chrome.tabs.remove(tab.id);
+}
+
+async function handleTabRemoved(tabId, removeInfo) {
+  await dashboardTrackingReady;
+  await dashboardTrackingQueue;
+
+  const wasDashboard = dashboardTabsById.delete(tabId);
+  const wasIntentional = intentionalDashboardClosures.delete(tabId);
+  if (wasDashboard) await persistDashboardTabTracking();
+  updateBadge();
+
+  if (!wasDashboard || wasIntentional || removeInfo.isWindowClosing) return;
+
+  // Chrome may create a native replacement tab after its last tab is closed.
+  // Give that event time to settle, then exempt only that specific tab.
+  await delay(50);
+  try {
+    const windowTabs = await chrome.tabs.query({ windowId: removeInfo.windowId });
+    if (windowTabs.length !== 1) return;
+
+    const replacement = windowTabs[0];
+    const replacementUrl = replacement.pendingUrl || replacement.url || '';
+    if (isNativeNewTabUrl(replacementUrl)) suppressNativeNewTab(replacement.id);
+  } catch {
+    // The browser window was closed along with its final tab.
+  }
 }
 
 // ─── Badge updater ────────────────────────────────────────────────────────────
@@ -159,35 +246,49 @@ function isNativeNewTabUrl(url = '') {
 }
 
 async function redirectNewTabIfEnabled(tab) {
-  try {
-    if (!tab?.id) return;
+  if (!tab?.id || nativeNewTabRedirectsInFlight.has(tab.id)) return;
 
+  nativeNewTabRedirectsInFlight.add(tab.id);
+  try {
     const settings = await getSettings();
     if (!settings.replaceChromeNewTab) return;
 
-    const tabUrl = tab.pendingUrl || tab.url || '';
-    if (!isNativeNewTabUrl(tabUrl)) return;
+    // onRemoved may identify this as Chrome's replacement for a manually
+    // closed final dashboard tab. Waiting avoids racing that determination.
+    await delay(200);
 
-    rememberNativeNewTabRedirect(tab.id);
-    await chrome.tabs.update(tab.id, { url: getDashboardUrl(), pinned: false });
+    const currentTab = await chrome.tabs.get(tab.id);
+    const tabUrl = currentTab.pendingUrl || currentTab.url || '';
+    if (!isNativeNewTabUrl(tabUrl)) return;
+    if (suppressedNativeNewTabs.delete(currentTab.id)) return;
+
+    const existing = await findExistingDashboard(currentTab.id);
+    if (existing) {
+      await focusDashboard(existing);
+      await closeTransientTabOrWindow(currentTab);
+      return;
+    }
+
+    await chrome.tabs.update(currentTab.id, { url: getDashboardUrl(), pinned: false });
   } catch (err) {
-    console.warn('[Tab Out] Failed to redirect new tab:', err);
+    if (!String(err?.message || err).includes('No tab with id')) {
+      console.warn('[Tab Out] Failed to redirect new tab:', err);
+    }
+  } finally {
+    nativeNewTabRedirectsInFlight.delete(tab.id);
   }
 }
 
 async function handleDashboardOpened(tabId) {
   if (!tabId) return;
-  if (nativeNewTabRedirects.has(tabId)) {
-    nativeNewTabRedirects.delete(tabId);
-    return;
-  }
 
   const existing = await findExistingDashboard(tabId);
   if (!existing) return;
-  if (!await canRemoveTabWithoutEmptyingWindow(tabId)) return;
 
   await focusDashboard(existing);
-  await chrome.tabs.remove(tabId);
+  const duplicate = await chrome.tabs.get(tabId);
+  intentionalDashboardClosures.add(tabId);
+  await closeTransientTabOrWindow(duplicate);
 }
 
 // ─── Event listeners ──────────────────────────────────────────────────────────
@@ -204,17 +305,21 @@ chrome.runtime.onStartup.addListener(() => {
 
 // Update badge whenever a tab is opened
 chrome.tabs.onCreated.addListener((tab) => {
+  trackDashboardTab(tab);
   updateBadge();
   redirectNewTabIfEnabled(tab);
 });
 
 // Update badge whenever a tab is closed
-chrome.tabs.onRemoved.addListener(() => {
-  updateBadge();
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  handleTabRemoved(tabId, removeInfo).catch(err => {
+    console.warn('[Tab Out] Failed to handle removed tab:', err);
+  });
 });
 
 // Update badge when a tab's URL changes (e.g. navigating to/from chrome://)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  trackDashboardTab(tab);
   updateBadge();
   if (changeInfo.url) {
     redirectNewTabIfEnabled({ ...tab, id: tabId, url: changeInfo.url });
@@ -235,13 +340,17 @@ chrome.commands.onCommand.addListener(() => {
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type !== 'TAB_OUT_DASHBOARD_READY') return false;
 
-  handleDashboardOpened(sender.tab?.id || message.tabId).catch(err => {
-    console.warn('[Tab Out] Failed to focus existing dashboard:', err);
-  });
+  const tabId = sender.tab?.id || message.tabId;
+  dashboardOpenQueue = dashboardOpenQueue
+    .then(() => handleDashboardOpened(tabId))
+    .catch(err => {
+      console.warn('[Tab Out] Failed to focus existing dashboard:', err);
+    });
   return false;
 });
 
 // ─── Initial run ─────────────────────────────────────────────────────────────
 
 // Run once immediately when the service worker first loads
+dashboardTrackingReady = hydrateDashboardTabTracking();
 updateBadge();

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.3 - 2026-06-18
+
+### Fixed
+
+- Persist dashboard-tab tracking across background service worker restarts for more reliable duplicate detection.
+- Prevent new-tab replacement from immediately reopening Tab Out after the final dashboard tab is closed manually.
+- Serialize simultaneous dashboard openings so only one dashboard remains active.
+- Close transient duplicate-dashboard windows cleanly when they contain no other tabs.
+
 ## 1.0.2 - 2026-06-18
 
 ### Fixed
