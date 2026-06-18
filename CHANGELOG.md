@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4 - 2026-06-18
+
+### Fixed
+
+- Keep header shortcut menus layered above dashboard cards so their actions remain visible and clickable.
+
 ## 1.0.3 - 2026-06-18
 
 ### Fixed

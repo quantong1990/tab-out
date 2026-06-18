@@ -182,6 +182,8 @@ body::before {
 
 /* ---- Header ---- */
 header {
+  position: relative;
+  z-index: 30;
   display: grid;
   grid-template-columns: 1fr;
   gap: 22px;
@@ -2076,6 +2078,8 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 
 /* ---- Main dashboard stack ---- */
 .dashboard-columns {
+  position: relative;
+  z-index: 1;
   display: block;
 }
 
